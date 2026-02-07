@@ -25,7 +25,7 @@ allowed-tools:
 | ProcessorName | да           | —            | Имя обработки (должна существовать)       |
 | FormName      | да           | —            | Имя формы                                 |
 | Synonym       | нет          | = FormName   | Синоним формы                             |
-| --main        | нет          | false        | Установить как форму по умолчанию         |
+| --main        | нет          | авто         | Установить как форму по умолчанию (автоматически для первой формы) |
 | SrcDir        | нет          | `src`        | Каталог исходников                        |
 
 ## Команда
@@ -48,7 +48,7 @@ pwsh -NoProfile -File .claude/skills/epf-add-form/scripts/add-form.ps1 -Processo
 
 ## Что модифицируется
 
-- `<SrcDir>/<ProcessorName>.xml` — добавляется `<Form>` в `ChildObjects`, при `--main` обновляется `DefaultForm`
+- `<SrcDir>/<ProcessorName>.xml` — добавляется `<Form>` в `ChildObjects`, обновляется `DefaultForm` (автоматически если это первая форма, или явно при `--main`)
 
 ## Детали
 

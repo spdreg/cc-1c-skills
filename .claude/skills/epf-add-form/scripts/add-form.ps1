@@ -174,8 +174,11 @@ if ($firstTemplate) {
 	}
 }
 
-# При -Main обновить DefaultForm
-if ($Main) {
+# Обновить DefaultForm: явно при -Main, или автоматически если это первая форма
+$existingForms = $childObjects.SelectNodes("md:Form", $nsMgr)
+$isFirstForm = ($existingForms.Count -eq 1)
+
+if ($Main -or $isFirstForm) {
 	$defaultForm = $xmlDoc.SelectSingleNode("//md:DefaultForm", $nsMgr)
 	if ($defaultForm) {
 		$defaultForm.InnerText = "ExternalDataProcessor.$ProcessorName.Form.$FormName"
@@ -197,6 +200,6 @@ Write-Host "[OK] Создана форма: $FormName"
 Write-Host "     Метаданные: $formMetaPath"
 Write-Host "     Описание:   $formXmlPath"
 Write-Host "     Модуль:     $modulePath"
-if ($Main) {
+if ($Main -or $isFirstForm) {
 	Write-Host "     DefaultForm обновлён"
 }
