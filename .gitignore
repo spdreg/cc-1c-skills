@@ -9,3 +9,6 @@ base/
 
 # Временные файлы тестов
 test-tmp/
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
