@@ -226,6 +226,12 @@ foreach ($col in $colWidthMap.Keys) {
 # 6c. Scan areas for row heights and cell formats
 # We need to do two passes: first collect all formats, then generate XML
 
+# Helper: escape XML special characters
+function Esc-Xml {
+	param([string]$s)
+	return $s.Replace('&','&amp;').Replace('<','&lt;').Replace('>','&gt;').Replace('"','&quot;')
+}
+
 # Helper: determine fillType from cell content
 function Get-FillType {
 	param($cell)
@@ -453,7 +459,7 @@ foreach ($area in $def.areas) {
 					X "`t`t`t`t`t<tl>"
 					X "`t`t`t`t`t`t<v8:item>"
 					X "`t`t`t`t`t`t`t<v8:lang>ru</v8:lang>"
-					X "`t`t`t`t`t`t`t<v8:content>$($cellInfo.Text)</v8:content>"
+					X "`t`t`t`t`t`t`t<v8:content>$(Esc-Xml $cellInfo.Text)</v8:content>"
 					X "`t`t`t`t`t`t</v8:item>"
 					X "`t`t`t`t`t</tl>"
 				}
@@ -462,7 +468,7 @@ foreach ($area in $def.areas) {
 					X "`t`t`t`t`t<tl>"
 					X "`t`t`t`t`t`t<v8:item>"
 					X "`t`t`t`t`t`t`t<v8:lang>ru</v8:lang>"
-					X "`t`t`t`t`t`t`t<v8:content>$($cellInfo.Template)</v8:content>"
+					X "`t`t`t`t`t`t`t<v8:content>$(Esc-Xml $cellInfo.Template)</v8:content>"
 					X "`t`t`t`t`t`t</v8:item>"
 					X "`t`t`t`t`t</tl>"
 				}
