@@ -276,9 +276,25 @@ if ($rawFonts.Count -gt 0) {
 	$fontDefs["default"] = $rawFonts[0]
 }
 
+function Get-FontKey {
+	param($f)
+	return "$($f.Face)|$($f.Size)|$($f.Bold)|$($f.Italic)|$($f.Underline)|$($f.Strikeout)"
+}
+
+$fontKeyMap = @{}
+$fontKeyMap[(Get-FontKey $rawFonts[0])] = "default"
+
 for ($i = 1; $i -lt $rawFonts.Count; $i++) {
 	$f = $rawFonts[$i]
 	$df = $rawFonts[0]
+
+	# Dedup: if identical font already named, reuse
+	$fKey = Get-FontKey $f
+	if ($fontKeyMap.ContainsKey($fKey)) {
+		$fontNames[$i] = $fontKeyMap[$fKey]
+		continue
+	}
+
 	$name = $null
 
 	if ($f.Face -eq $df.Face -and $f.Size -eq $df.Size) {
@@ -311,6 +327,7 @@ for ($i = 1; $i -lt $rawFonts.Count; $i++) {
 
 	$fontNames[$i] = $name
 	$fontDefs[$name] = $f
+	$fontKeyMap[$fKey] = $name
 }
 
 # --- 11. Collect and name styles ---
@@ -409,7 +426,7 @@ foreach ($area in $namedAreas) {
 		$rd = $rowData[$globalRow]
 
 		if (-not $rd -or $rd.Empty) {
-			$areaRows += [ordered]@{ cells = [array]@() }
+			$areaRows += [ordered]@{}
 			continue
 		}
 
@@ -455,7 +472,7 @@ foreach ($area in $namedAreas) {
 			}
 		}
 
-		if ($rowStyleName) { $dslRow["rowStyle"] = $rowStyleName }
+		if ($rowStyleName -and $rowStyleName -ne "default") { $dslRow["rowStyle"] = $rowStyleName }
 
 		# Build cell list
 		$dslCells = @()
@@ -499,7 +516,7 @@ foreach ($area in $namedAreas) {
 			$dslCells += $dslCell
 		}
 
-		$dslRow["cells"] = [array]$dslCells
+		if ($dslCells.Count -gt 0) { $dslRow["cells"] = [array]$dslCells }
 		$areaRows += $dslRow
 	}
 
@@ -557,6 +574,11 @@ $result = [ordered]@{
 	defaultWidth = $defaultWidth
 }
 if ($compressedWidths.Count -gt 0) { $result["columnWidths"] = $compressedWidths }
+# Remove empty "default" style
+if ($styleDefs.Contains("default") -and $styleDefs["default"].Count -eq 0) {
+	$styleDefs.Remove("default")
+}
+
 $result["fonts"] = $fontsOut
 $result["styles"] = $styleDefs
 $result["areas"] = [array]$dslAreas
