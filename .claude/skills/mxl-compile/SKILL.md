@@ -142,6 +142,7 @@ powershell.exe -NoProfile -File .claude/skills/mxl-compile/scripts/mxl-compile.p
 | `border` | — | Стороны рамки: `all`, `top`, `bottom`, `left`, `right`, `none`. Через запятую: `"top,bottom"` |
 | `borderWidth` | `"thin"` | Толщина рамки: `thin` (1px) или `thick` (2px) |
 | `wrap` | `false` | Перенос текста |
+| `numberFormat` | — | Формат числа 1С, например `"ЧЦ=15; ЧДЦ=2"` |
 
 ### Области (`areas[]`)
 
@@ -165,7 +166,8 @@ powershell.exe -NoProfile -File .claude/skills/mxl-compile/scripts/mxl-compile.p
 | Поле | Обяз. | По умолч. | Описание |
 |------|:-----:|-----------|----------|
 | `col` | да | — | Позиция колонки (1-based) |
-| `span` | нет | `1` | Количество объединённых колонок |
+| `span` | нет | `1` | Объединение по горизонтали (количество колонок) |
+| `rowspan` | нет | `1` | Объединение по вертикали (количество строк) |
 | `style` | нет | rowStyle | Стиль ячейки (переопределяет rowStyle) |
 | `param` | нет | — | Параметр заполнения |
 | `detail` | нет | — | Параметр расшифровки (только с `param`) |
@@ -187,8 +189,6 @@ powershell.exe -NoProfile -File .claude/skills/mxl-compile/scripts/mxl-compile.p
 - Множественные наборы колонок
 - Области типа Columns / Rectangle
 - Рисунки (штрихкоды, картинки)
-- Объединение по строкам (rowspan)
-- Числовые форматы
 - Фон ячеек
 
 Эти возможности будут добавлены в будущих версиях без переделки основной архитектуры.

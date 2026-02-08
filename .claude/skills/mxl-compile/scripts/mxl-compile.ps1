@@ -138,7 +138,7 @@ function Resolve-Style {
 
 	$fontIdx = $fontMap["default"]
 	$lb = -1; $tb = -1; $rb = -1; $bb = -1
-	$ha = ""; $va = ""
+	$ha = ""; $va = ""; $nf = ""
 	$wrap = $false
 
 	if ($styleName -and $def.styles) {
@@ -180,15 +180,19 @@ function Resolve-Style {
 
 			# Wrap
 			if ($style.wrap -eq $true) { $wrap = $true }
+
+			# Number format
+			if ($style.numberFormat) { $nf = $style.numberFormat }
 		}
 	}
 
 	return @{
-		FontIdx  = $fontIdx
-		LB       = $lb; TB = $tb; RB = $rb; BB = $bb
-		HA       = $ha; VA = $va
-		Wrap     = $wrap
-		FillType = $fillType
+		FontIdx      = $fontIdx
+		LB           = $lb; TB = $tb; RB = $rb; BB = $bb
+		HA           = $ha; VA = $va
+		Wrap         = $wrap
+		FillType     = $fillType
+		NumberFormat = $nf
 	}
 }
 
@@ -204,10 +208,11 @@ function Get-FormatKey {
 		[string]$ha = "", [string]$va = "",
 		[bool]$wrap = $false,
 		[string]$fillType = "",
+		[string]$numberFormat = "",
 		[int]$width = -1,
 		[int]$height = -1
 	)
-	return "f=$fontIdx|lb=$lb|tb=$tb|rb=$rb|bb=$bb|ha=$ha|va=$va|wr=$wrap|ft=$fillType|w=$width|h=$height"
+	return "f=$fontIdx|lb=$lb|tb=$tb|rb=$rb|bb=$bb|ha=$ha|va=$va|wr=$wrap|ft=$fillType|nf=$numberFormat|w=$width|h=$height"
 }
 
 function Register-Format {
@@ -263,14 +268,16 @@ function Register-CellFormat {
 	$key = Get-FormatKey -fontIdx $resolved.FontIdx `
 		-lb $resolved.LB -tb $resolved.TB -rb $resolved.RB -bb $resolved.BB `
 		-ha $resolved.HA -va $resolved.VA `
-		-wrap $resolved.Wrap -fillType $resolved.FillType
+		-wrap $resolved.Wrap -fillType $resolved.FillType `
+		-numberFormat $resolved.NumberFormat
 	$props = @{
-		FontIdx  = $resolved.FontIdx
-		LB       = $resolved.LB; TB = $resolved.TB
-		RB       = $resolved.RB; BB = $resolved.BB
-		HA       = $resolved.HA; VA = $resolved.VA
-		Wrap     = $resolved.Wrap
-		FillType = $resolved.FillType
+		FontIdx      = $resolved.FontIdx
+		LB           = $resolved.LB; TB = $resolved.TB
+		RB           = $resolved.RB; BB = $resolved.BB
+		HA           = $resolved.HA; VA = $resolved.VA
+		Wrap         = $resolved.Wrap
+		FillType     = $resolved.FillType
+		NumberFormat = $resolved.NumberFormat
 	}
 	return Register-Format -key $key -props $props
 }
@@ -351,8 +358,20 @@ $totalRowCount = 0
 foreach ($area in $def.areas) {
 	$areaStartRow = $globalRow
 	$areaName = $area.name
+	$activeRowspans = @()  # @{ColStart=1-based; ColEnd=1-based; EndLocalRow=int}
+	$localRow = 0
 
 	foreach ($row in $area.rows) {
+		# Build set of columns occupied by rowspans from previous rows
+		$rowspanOccupied = @{}  # 1-based col -> $true
+		foreach ($rs in $activeRowspans) {
+			if ($localRow -gt $rs.StartLocalRow -and $localRow -le $rs.EndLocalRow) {
+				for ($c = $rs.ColStart; $c -le $rs.ColEnd; $c++) {
+					$rowspanOccupied[$c] = $true
+				}
+			}
+		}
+
 		$rowHasContent = $false
 		$rowCells = @()  # array of { Col(0-based), FormatIdx, Content }
 
@@ -371,8 +390,9 @@ foreach ($area in $def.areas) {
 		if ($row.cells -and $row.cells.Count -gt 0) {
 			$rowHasContent = $true
 
-			# Build set of occupied columns (1-based)
+			# Build set of occupied columns (1-based): explicit cells + rowspan from above
 			$occupiedCols = @{}
+			foreach ($rsk in $rowspanOccupied.Keys) { $occupiedCols[$rsk] = $true }
 			foreach ($cell in $row.cells) {
 				$colStart = [int]$cell.col
 				$colSpan = if ($cell.span) { [int]$cell.span } else { 1 }
@@ -385,6 +405,7 @@ foreach ($area in $def.areas) {
 			foreach ($cell in $row.cells) {
 				$colStart = [int]$cell.col
 				$colSpan = if ($cell.span) { [int]$cell.span } else { 1 }
+				$rowspan = if ($cell.rowspan) { [int]$cell.rowspan } else { 1 }
 				$cellStyle = if ($cell.style) { $cell.style } elseif ($row.rowStyle) { $row.rowStyle } else { "default" }
 				$ft = Get-FillType $cell
 				$fmtIdx = Register-CellFormat -styleName $cellStyle -fillType $ft
@@ -399,13 +420,21 @@ foreach ($area in $def.areas) {
 				}
 				$rowCells += $cellInfo
 
-				# Collect merge
-				if ($colSpan -gt 1) {
-					$merges += @{
-						R = $globalRow
-						C = $colStart - 1
-						W = $colSpan - 1
+				# Track rowspan for subsequent rows
+				if ($rowspan -gt 1) {
+					$activeRowspans += @{
+						ColStart      = $colStart
+						ColEnd        = $colStart + $colSpan - 1
+						StartLocalRow = $localRow
+						EndLocalRow   = $localRow + $rowspan - 1
 					}
+				}
+
+				# Collect merge (horizontal, vertical, or both)
+				if ($colSpan -gt 1 -or $rowspan -gt 1) {
+					$merge = @{ R = $globalRow; C = $colStart - 1; W = $colSpan - 1 }
+					if ($rowspan -gt 1) { $merge.H = $rowspan - 1 }
+					$merges += $merge
 				}
 			}
 
@@ -430,12 +459,13 @@ foreach ($area in $def.areas) {
 			$rowCells = $rowCells | Sort-Object { $_.Col }
 
 		} elseif ($row.rowStyle) {
-			# Row with only rowStyle, no explicit cells — fill all columns
+			# Row with only rowStyle, no explicit cells — fill non-rowspan columns
 			$rowHasContent = $true
 			$gapFmtIdx = Register-CellFormat -styleName $row.rowStyle -fillType ""
-			for ($c = 0; $c -lt $totalColumns; $c++) {
+			for ($c = 1; $c -le $totalColumns; $c++) {
+				if ($rowspanOccupied.ContainsKey($c)) { continue }
 				$rowCells += @{
-					Col       = $c
+					Col       = $c - 1
 					FormatIdx = $gapFmtIdx
 					Param     = $null
 					Detail    = $null
@@ -496,6 +526,7 @@ foreach ($area in $def.areas) {
 		X "`t`t</row>"
 		X "`t</rowsItem>"
 
+		$localRow++
 		$globalRow++
 	}
 
@@ -520,6 +551,7 @@ foreach ($m in $merges) {
 	X "`t<merge>"
 	X "`t`t<r>$($m.R)</r>"
 	X "`t`t<c>$($m.C)</c>"
+	if ($m.H) { X "`t`t<h>$($m.H)</h>" }
 	X "`t`t<w>$($m.W)</w>"
 	X "`t</merge>"
 }
@@ -592,6 +624,14 @@ foreach ($key in $formatRegistry.Keys) {
 	}
 	if ($fmt.FillType) {
 		X "`t`t<fillType>$($fmt.FillType)</fillType>"
+	}
+	if ($fmt.NumberFormat) {
+		X "`t`t<format>"
+		X "`t`t`t<v8:item>"
+		X "`t`t`t`t<v8:lang>ru</v8:lang>"
+		X "`t`t`t`t<v8:content>$(Esc-Xml $fmt.NumberFormat)</v8:content>"
+		X "`t`t`t</v8:item>"
+		X "`t`t</format>"
 	}
 
 	X "`t</format>"
