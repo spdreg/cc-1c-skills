@@ -157,6 +157,7 @@ function Get-AreaCellData {
 	)
 
 	$params = @()
+	$details = @()
 	$texts = @()
 	$templates = @()
 
@@ -170,7 +171,10 @@ function Get-AreaCellData {
 			$cells = Get-CellData -rowNode $rowMap[$r] -ns $ns -includeText $includeText
 			foreach ($c in $cells) {
 				switch ($c.Kind) {
-					"Parameter" { $params += $c.Value }
+					"Parameter" {
+						$params += $c.Value
+						if ($c.Detail) { $details += "$($c.Value)->$($c.Detail)" }
+					}
 					"Text"      { $texts += $c.Value }
 					"Template"  { $templates += $c.Value }
 				}
@@ -178,8 +182,13 @@ function Get-AreaCellData {
 		}
 	}
 
-	return @{ Params = $params; Texts = $texts; Templates = $templates }
+	return @{ Params = $params; Details = $details; Texts = $texts; Templates = $templates }
 }
+
+# Sort areas by position: Rows by beginRow, Columns by beginCol, Rectangle by beginRow
+$namedAreas = $namedAreas | Sort-Object {
+	if ($_.AreaType -eq "Columns") { $_.BeginCol } else { $_.BeginRow }
+}, { $_.Name }
 
 # Collect data for each area
 $areaData = @()
@@ -190,6 +199,7 @@ foreach ($area in $namedAreas) {
 	$areaData += @{
 		Area      = $area
 		Params    = $data.Params
+		Details   = $data.Details
 		Texts     = $data.Texts
 		Templates = $data.Templates
 	}
@@ -206,6 +216,7 @@ foreach ($area in $namedAreas) {
 
 # Find parameters outside named areas
 $outsideParams = @()
+$outsideDetails = @()
 $outsideTexts = @()
 $outsideTemplates = @()
 
@@ -214,7 +225,10 @@ foreach ($r in $rowMap.Keys | Sort-Object) {
 		$cells = Get-CellData -rowNode $rowMap[$r] -ns $nsMgr -includeText $WithText
 		foreach ($c in $cells) {
 			switch ($c.Kind) {
-				"Parameter" { $outsideParams += $c.Value }
+				"Parameter" {
+					$outsideParams += $c.Value
+					if ($c.Detail) { $outsideDetails += "$($c.Value)->$($c.Detail)" }
+				}
 				"Text"      { $outsideTexts += $c.Value }
 				"Template"  { $outsideTemplates += $c.Value }
 			}
@@ -300,7 +314,10 @@ $lines += "  Rows: $docHeight, Columns: $defaultColCount"
 if ($columnSets.Count -eq 0) {
 	$lines += "  Column sets: 1 (default only)"
 } else {
-	$lines += "  Column sets: $($columnSets.Count + 1) (default + $($columnSets.Count) additional)"
+	$lines += "  Column sets: $($columnSets.Count + 1) (default=$defaultColCount cols + $($columnSets.Count) additional)"
+	foreach ($cs in $columnSets) {
+		$lines += "    $($cs.Id.Substring(0,8))...: $($cs.Size) cols"
+	}
 }
 
 $lines += ""
@@ -319,7 +336,11 @@ foreach ($ad in $areaData) {
 
 	$colsInfo = ""
 	if ($a.ColumnsID) {
-		$colsInfo = " [colset]"
+		$csSize = ""
+		foreach ($cs in $columnSets) {
+			if ($cs.Id -eq $a.ColumnsID) { $csSize = " $($cs.Size)cols"; break }
+		}
+		$colsInfo = " [colset$csSize]"
 	}
 
 	$paramInfo = "($paramCount params)"
@@ -333,6 +354,26 @@ foreach ($nd in $namedDrawings) {
 	$lines += "  $nameStr Drawing      drawingID=$($nd.DrawingID)"
 }
 
+# Detect intersection pairs (Rows + Columns areas that overlap)
+$rowsAreas = $areaData | Where-Object { $_.Area.AreaType -eq "Rows" }
+$colsAreas = $areaData | Where-Object { $_.Area.AreaType -eq "Columns" }
+$intersections = @()
+if ($rowsAreas -and $colsAreas) {
+	foreach ($ra in $rowsAreas) {
+		foreach ($ca in $colsAreas) {
+			$intersections += "$($ra.Area.Name)|$($ca.Area.Name)"
+		}
+	}
+}
+
+if ($intersections.Count -gt 0) {
+	$lines += ""
+	$lines += "--- Intersections (use with GetArea) ---"
+	foreach ($pair in $intersections) {
+		$lines += "  $pair"
+	}
+}
+
 # Parameters by area
 $hasParams = ($areaData | Where-Object { $_.Params.Count -gt 0 }) -or ($outsideParams.Count -gt 0)
 
@@ -343,11 +384,20 @@ if ($hasParams) {
 		if ($ad.Params.Count -gt 0) {
 			$paramStr = Truncate-List -items $ad.Params -max $MaxParams
 			$lines += "  $($ad.Area.Name): $paramStr"
+			# Show detailParameters if any
+			if ($ad.Details.Count -gt 0) {
+				$detailStr = Truncate-List -items $ad.Details -max $MaxParams
+				$lines += "    detail: $detailStr"
+			}
 		}
 	}
 	if ($outsideParams.Count -gt 0) {
 		$paramStr = Truncate-List -items $outsideParams -max $MaxParams
 		$lines += "  (outside areas): $paramStr"
+		if ($outsideDetails.Count -gt 0) {
+			$detailStr = Truncate-List -items $outsideDetails -max $MaxParams
+			$lines += "    detail: $detailStr"
+		}
 	}
 }
 

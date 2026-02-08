@@ -54,42 +54,89 @@ Additional flags:
 ... -Offset 150            # pagination: skip first 150 lines
 ```
 
-## Output (text mode)
+## Reading the Output
+
+### Areas — sorted top-to-bottom
+
+Areas are listed in document order (by row position), not alphabetically. This matches the order you'll use in fill code — output areas from top to bottom.
 
 ```
-=== TemplName ===
-  Rows: 40, Columns: 33
-  Column sets: 1 (default only)
-
 --- Named areas ---
   Заголовок          Rows     rows 1-4     (1 params)
+  Поставщик          Rows     rows 5-6     (1 params)
   Строка             Rows     rows 14-14   (8 params)
   Итого              Rows     rows 16-17   (1 params)
-
---- Parameters by area ---
-  Заголовок: ТекстЗаголовка
-  Строка: НомерСтроки, Товар, Количество, Цена, Сумма, ... (+3)
-  Итого: Всего
-
---- Stats ---
-  Merges: 43
-  Drawings: 0
 ```
 
-With `-WithText`, adds a section showing static text (labels, headers) and template strings:
+Area types:
+- **Rows** — horizontal area (row range). Use: `Макет.ПолучитьОбласть("Имя")`
+- **Columns** — vertical area (column range). Use: `Макет.ПолучитьОбласть("Имя")`
+- **Rectangle** — fixed area (rows + cols). Typically uses a separate column set.
+- **Drawing** — named picture/barcode.
+
+### Column sets
+
+When template has multiple column sets, sizes are shown in header and per-area:
+
+```
+  Column sets: 7 (default=19 cols + 6 additional)
+    f01e015f...: 17 cols
+    0adf41ed...: 4 cols
+  ...
+  Подвал             Rows     rows 30-34  (5 params) [colset 14cols]
+  НумерацияЛистов    Rows     rows 59-59  (0 params) [colset 4cols]
+```
+
+### Intersections
+
+When both Rows and Columns areas exist (labels, price tags), the script lists intersection pairs:
+
+```
+--- Intersections (use with GetArea) ---
+  ВысотаЭтикетки|ШиринаЭтикетки
+```
+
+Use in BSL: `Макет.ПолучитьОбласть("ВысотаЭтикетки|ШиринаЭтикетки")`
+
+### Parameters and detailParameter
+
+Parameters are listed per area. If a parameter has a `detailParameter` (drill-down link), it's shown below:
+
+```
+--- Parameters by area ---
+  Поставщик: ПредставлениеПоставщика
+    detail: ПредставлениеПоставщика->Поставщик
+  Строка: НомерСтроки, Товар, Количество, Цена, Сумма, ... (+3)
+    detail: Товар->Номенклатура
+```
+
+This means: parameter `Товар` shows the value, and clicking it opens `Номенклатура` (the detail object).
+
+In BSL:
+```bsl
+Область.Параметры.Товар = СтрокаТЧ.Номенклатура;
+Область.Параметры.РасшифровкаТовар = СтрокаТЧ.Номенклатура; // detailParameter
+```
+
+### Text content (`-WithText`)
+
+Shows static text (labels, headers) and template strings with `[Param]` placeholders:
 
 ```
 --- Text content ---
   ШапкаТаблицы:
     Text: "№", "Товар", "Ед. изм.", "Кол-во", "Цена", "Сумма"
   Строка:
-    Templates: "[НомерСтроки]", "[Товар] ([Артикул])"
+    Templates: "Инв № [ИнвентарныйНомер]"
 ```
+
+- **Text** — static labels (fillType=Text). Useful to understand column meaning.
+- **Templates** — text with `[ParamName]` substitutions (fillType=Template). The param inside `[]` is filled programmatically.
 
 ## When to Use
 
-- **Before writing fill code**: run `/mxl-info` to understand the template structure, then write BSL code based on area names and parameter lists
-- **With `-WithText`**: when you need context about what labels/headers surround the parameters
+- **Before writing fill code**: run `/mxl-info` to understand area names and parameter lists, then write BSL output code following the top-to-bottom area order
+- **With `-WithText`**: when you need context — column headers, labels next to parameters, template patterns
 - **With `-Format json`**: when you need structured data for programmatic processing
 - **For existing templates**: analyze uploaded or configuration templates without reading raw XML
 
