@@ -19,12 +19,22 @@ allowed-tools:
 /role-compile <RoleName> <RolesDir>
 ```
 
-- **RoleName** — программное имя роли (например, `ВыполнениеРегламентныхЗаданий`)
-- **RolesDir** — каталог `Roles/` в исходниках конфигурации или обработки
+- **RoleName** — программное имя роли
+- **RolesDir** — каталог `Roles/` в исходниках конфигурации
 
-## Что создать
+## Файловая структура и регистрация
 
-### 1. Файл метаданных: `Roles/<RoleName>.xml`
+```
+Roles/
+  ИмяРоли.xml           ← метаданные (uuid, имя, синоним)
+  ИмяРоли/
+    Ext/
+      Rights.xml         ← определение прав
+```
+
+В `Configuration.xml` добавить `<Role>ИмяРоли</Role>` в секцию `<ChildObjects>`.
+
+## Шаблон метаданных: Roles/ИмяРоли.xml
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,11 +59,9 @@ allowed-tools:
 </MetaDataObject>
 ```
 
-**UUID:** Сгенерируй через PowerShell: `[guid]::NewGuid().ToString()`
+**UUID:** `powershell.exe -Command "[guid]::NewGuid().ToString()"`
 
-**Namespace:** Минимальный набор — достаточно `xmlns`, `v8`, `xr`, `xs`, `xsi`. Полный набор из спецификации тоже корректен.
-
-### 2. Файл прав: `Roles/<RoleName>/Ext/Rights.xml`
+## Шаблон прав: Roles/ИмяРоли/Ext/Rights.xml
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -64,146 +72,136 @@ allowed-tools:
     <setForNewObjects>false</setForNewObjects>
     <setForAttributesByDefault>true</setForAttributesByDefault>
     <independentRightsOfChildObjects>false</independentRightsOfChildObjects>
-    <!-- объекты с правами -->
+    <!-- блоки <object> -->
 </Rights>
 ```
 
-### 3. Регистрация в Configuration.xml
-
-Добавь `<Role>ИмяРоли</Role>` в секцию `<ChildObjects>` файла `Configuration.xml`.
+NB: namespace `http://v8.1c.ru/8.2/roles` (исторически 8.2, не 8.3).
 
 ## Формат блока прав
-
-Каждый объект — отдельный блок `<object>`:
-
-```xml
-<object>
-    <name>ТипОбъекта.ИмяОбъекта</name>
-    <right>
-        <name>ИмяПрава</name>
-        <value>true</value>
-    </right>
-</object>
-```
-
-Несколько прав — несколько `<right>` внутри одного `<object>`.
-
-## Права по типам объектов (краткая справка)
-
-### Ссылочные объекты данных
-
-| Тип | Типичные права |
-|-----|---------------|
-| `Catalog` | Read, Insert, Update, Delete, View, Edit, InputByString, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractiveDelete |
-| `Document` | (все Catalog) + Posting, UndoPosting, InteractivePosting, InteractivePostingRegular, InteractiveUndoPosting, InteractiveChangeOfPosted |
-| `ChartOfAccounts` | (как Catalog) + предопределённые: InteractiveDeletePredefinedData и др. |
-| `ChartOfCharacteristicTypes` | (как ChartOfAccounts) |
-| `ChartOfCalculationTypes` | (как ChartOfAccounts) |
-| `ExchangePlan` | (как Catalog) |
-| `BusinessProcess` | (как Catalog) + Start, InteractiveStart, InteractiveActivate |
-| `Task` | (как Catalog) + Execute, InteractiveExecute, InteractiveActivate |
-
-### Регистры
-
-| Тип | Права |
-|-----|-------|
-| `InformationRegister` | Read, Update, View, Edit, TotalsControl |
-| `AccumulationRegister` | Read, Update, View, Edit, TotalsControl |
-| `AccountingRegister` | Read, Update, View, Edit, TotalsControl |
-| `CalculationRegister` | Read, View |
-
-### Простые типы
-
-| Тип | Права |
-|-----|-------|
-| `DataProcessor` | Use, View |
-| `Report` | Use, View |
-| `Constant` | Read, Update, View, Edit |
-| `CommonForm` | View |
-| `CommonCommand` | View |
-| `Subsystem` | View |
-| `DocumentJournal` | Read, View |
-| `Sequence` | Read, Update |
-| `SessionParameter` | Get, Set |
-| `CommonAttribute` | View, Edit |
-| `WebService` / `HTTPService` / `IntegrationService` | Use |
-
-### Вложенные объекты
-
-| Вложенный тип | Права | Пример |
-|--------------|-------|--------|
-| `*.StandardAttribute.*` | View, Edit | `Document.Реализация.StandardAttribute.Posted` |
-| `*.Attribute.*` | View, Edit | `Catalog.Контрагенты.Attribute.ИНН` |
-| `*.TabularSection.*` | View, Edit | `Document.Реализация.TabularSection.Товары` |
-| `*Register.*.Dimension.*` | View, Edit | `InformationRegister.Цены.Dimension.Номенклатура` |
-| `*Register.*.Resource.*` | View, Edit | `InformationRegister.Цены.Resource.Цена` |
-| `*.Command.*` | View | `Catalog.Контрагенты.Command.Открыть` |
-
-### Configuration
-
-Права на конфигурацию в целом: `Configuration.ИмяКонфигурации`
-
-Ключевые: Administration, DataAdministration, ThinClient, WebClient, ThickClient, ExternalConnection, Output, SaveUserData, InteractiveOpenExtDataProcessors, InteractiveOpenExtReports
-
-## Типичные наборы прав
-
-### Чтение справочника
 
 ```xml
 <object>
     <name>Catalog.Номенклатура</name>
     <right><name>Read</name><value>true</value></right>
     <right><name>View</name><value>true</value></right>
-    <right><name>InputByString</name><value>true</value></right>
 </object>
 ```
 
-### Полные права на документ
+Имя объекта — dot-нотация: `ТипОбъекта.Имя[.ТипВложенного.ИмяВложенного]`.
+
+## Практические наборы прав
+
+### Catalog / ExchangePlan
+
+| Набор | Права |
+|-------|-------|
+| Чтение | Read, View, InputByString |
+| Полные | Read, Insert, Update, Delete, View, Edit, InputByString, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark |
+
+### Document
+
+| Набор | Права |
+|-------|-------|
+| Чтение | Read, View, InputByString |
+| Полные | Read, Insert, Update, Delete, View, Edit, InputByString, Posting, UndoPosting, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractivePosting, InteractivePostingRegular, InteractiveUndoPosting, InteractiveChangeOfPosted |
+
+### InformationRegister / AccumulationRegister / AccountingRegister
+
+| Набор | Права |
+|-------|-------|
+| Чтение | Read, View |
+| Полные | Read, Update, View, Edit |
+
+TotalsControl — только для управления итогами, обычно не нужно.
+
+### Простые типы
+
+| Тип | Права |
+|-----|-------|
+| `DataProcessor` / `Report` | Use, View |
+| `Constant` | Read, Update, View, Edit (чтение: Read, View) |
+| `CommonForm` / `CommonCommand` / `Subsystem` / `FilterCriterion` | View |
+| `DocumentJournal` | Read, View |
+| `Sequence` | Read, Update |
+| `SessionParameter` | Get (+ Set если пишет) |
+| `CommonAttribute` | View (+ Edit если редактирует) |
+| `WebService` / `HTTPService` / `IntegrationService` | Use |
+| `CalculationRegister` | Read, View |
+
+### Редкие ссылочные типы
+
+| Тип | Особенности (относительно Catalog) |
+|-----|-------|
+| `ChartOfAccounts`, `ChartOfCharacteristicTypes`, `ChartOfCalculationTypes` | + Predefined-права (InteractiveDeletePredefinedData и др.) |
+| `BusinessProcess` | + Start, InteractiveStart, InteractiveActivate |
+| `Task` | + Execute, InteractiveExecute, InteractiveActivate |
+
+### Типы БЕЗ прав в ролях
+
+Enum, FunctionalOption, DefinedType, CommonModule, CommonPicture, CommonTemplate — не фигурируют в Rights.xml.
+
+### Вложенные объекты (права: View, Edit)
+
+```
+Catalog.Контрагенты.Attribute.ИНН
+Document.Реализация.StandardAttribute.Posted
+Document.Реализация.TabularSection.Товары
+InformationRegister.Цены.Dimension.Номенклатура
+InformationRegister.Цены.Resource.Цена
+Catalog.Контрагенты.Command.ОткрытьКарточку          ← только View
+Task.Задача.AddressingAttribute.Исполнитель
+```
+
+Используются для точечного запрета: `<value>false</value>` на конкретный реквизит.
+
+### Configuration
+
+Объект: `Configuration.ИмяКонфигурации`. Ключевые права: Administration, DataAdministration, ThinClient, WebClient, ThickClient, MobileClient, ExternalConnection, Output, SaveUserData, InteractiveOpenExtDataProcessors, InteractiveOpenExtReports, MainWindowModeNormal, MainWindowModeWorkplace, MainWindowModeEmbeddedWorkplace, MainWindowModeFullscreenWorkplace, MainWindowModeKiosk, AnalyticsSystemClient.
+
+> DataHistory-права (ReadDataHistory, UpdateDataHistory и др.) существуют у Catalog, Document, Register, Constant — но используются крайне редко, в типовых ролях практически не встречаются.
+
+## RLS (ограничения на уровне записей)
+
+Внутрь `<right>`, после `<value>`. Применяется к Read, Update, Insert, Delete.
+
+```xml
+<right>
+    <name>Read</name>
+    <value>true</value>
+    <restrictionByCondition>
+        <condition>#ИмяШаблона("Параметр1", "Параметр2")</condition>
+    </restrictionByCondition>
+</right>
+```
+
+Шаблоны — в конце Rights.xml, после всех `<object>`:
+
+```xml
+<restrictionTemplate>
+    <name>ИмяШаблона(Параметр1, Параметр2)</name>
+    <condition>Текст шаблона</condition>
+</restrictionTemplate>
+```
+
+`&` в условии → `&amp;`. Типичные шаблоны: ДляОбъекта, ПоЗначениям, ДляРегистра.
+
+## Пример: роль для регламентного задания
 
 ```xml
 <object>
-    <name>Document.РеализацияТоваровУслуг</name>
+    <name>Catalog.Валюты</name>
     <right><name>Read</name><value>true</value></right>
-    <right><name>Insert</name><value>true</value></right>
-    <right><name>Update</name><value>true</value></right>
-    <right><name>Delete</name><value>true</value></right>
-    <right><name>Posting</name><value>true</value></right>
-    <right><name>UndoPosting</name><value>true</value></right>
-    <right><name>View</name><value>true</value></right>
-    <right><name>InteractiveInsert</name><value>true</value></right>
-    <right><name>Edit</name><value>true</value></right>
-    <right><name>InteractiveSetDeletionMark</name><value>true</value></right>
-    <right><name>InteractiveClearDeletionMark</name><value>true</value></right>
-    <right><name>InteractivePosting</name><value>true</value></right>
-    <right><name>InteractivePostingRegular</name><value>true</value></right>
-    <right><name>InteractiveUndoPosting</name><value>true</value></right>
-    <right><name>InteractiveChangeOfPosted</name><value>true</value></right>
-    <right><name>InputByString</name><value>true</value></right>
 </object>
-```
-
-### Использование обработки
-
-```xml
 <object>
-    <name>DataProcessor.ОбновлениеЦен</name>
-    <right><name>Use</name><value>true</value></right>
-    <right><name>View</name><value>true</value></right>
-</object>
-```
-
-### Чтение/запись регистра
-
-```xml
-<object>
-    <name>InformationRegister.ЦеныНоменклатуры</name>
+    <name>InformationRegister.КурсыВалют</name>
     <right><name>Read</name><value>true</value></right>
     <right><name>Update</name><value>true</value></right>
-    <right><name>View</name><value>true</value></right>
-    <right><name>Edit</name><value>true</value></right>
+</object>
+<object>
+    <name>Constant.ОсновнаяВалюта</name>
+    <right><name>Read</name><value>true</value></right>
 </object>
 ```
 
-## Полная спецификация
-
-См. [1c-role-spec.md](../../docs/1c-role-spec.md) — полный каталог прав, RLS, шаблоны ограничений, версии формата.
+Фоновые задания не требуют Interactive/View/Edit-прав и прав конфигурации (ThinClient, WebClient и др.) — только программные (Read, Insert, Update, Delete, Posting).
