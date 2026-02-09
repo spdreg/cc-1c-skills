@@ -463,6 +463,20 @@ if (-not $stopped) {
 	}
 }
 
+# --- Check 10: Title must be multilingual XML (not plain text) ---
+
+if (-not $stopped) {
+	$titleNode = $root.SelectSingleNode("f:Title", $nsMgr)
+	if ($titleNode) {
+		$v8items = $titleNode.SelectNodes("v8:item", $nsMgr)
+		if ($v8items.Count -eq 0 -and $titleNode.InnerText.Trim() -ne "") {
+			Report-Error "Form Title is plain text ('$($titleNode.InnerText.Trim())') — must be multilingual XML (<v8:item>). Use top-level 'title' key in form-compile DSL."
+		} else {
+			Report-OK "Title: multilingual XML"
+		}
+	}
+}
+
 # --- Summary ---
 
 Write-Host ""

@@ -634,7 +634,7 @@ function Insert-IntoContainer($container, $newNode, $afterName, $childIndent) {
 		if ($afterElem) {
 			$refNode = $afterElem.NextSibling
 		} else {
-			Write-Host "[WARN] Element '$afterName' not found in target container, appending at end"
+			Write-Host "[WARN] after='$afterName' not found in target container, appending at end"
 		}
 	}
 
@@ -736,6 +736,21 @@ if ($def.elements -and $def.elements.Count -gt 0) {
 
 	# Detect indent level
 	$childIndent = Get-ChildIndent $targetCI
+
+	# Check for duplicate element names
+	foreach ($el in $def.elements) {
+		$typeKey = $null
+		foreach ($key in @("group","input","check","label","labelField","table","pages","page","button","picture","picField","calendar","cmdBar","popup")) {
+			if ($el.$key -ne $null) { $typeKey = $key; break }
+		}
+		if ($typeKey) {
+			$elName = Get-ElementName -el $el -typeKey $typeKey
+			$existing = Find-Element $rootCI $elName
+			if ($existing) {
+				Write-Host "[WARN] Element '$elName' already exists in form (id=$($existing.GetAttribute('id')))"
+			}
+		}
+	}
 
 	# Remember starting element ID for companion counting
 	$startElemId = $script:nextElemId

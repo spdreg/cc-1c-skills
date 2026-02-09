@@ -63,6 +63,13 @@ powershell.exe -NoProfile -File .claude\skills\form-compile\scripts\form-compile
 - `"readOnly": true` — ReadOnly=true
 - `"on": ["OnChange", "StartChoice"]` — события с автоименованием обработчиков
 
+### Свойства кнопок
+
+- `"command": "ИмяКоманды"` — привязка к команде формы → `Form.Command.ИмяКоманды`
+- `"stdCommand": "Close"` — привязка к стандартной команде → `Form.StandardCommand.Close`
+- `"defaultButton": true` — кнопка по умолчанию
+- `"type": "hyperlink"` — тип кнопки (`"usual"` / `"hyperlink"` / `"commandBar"`)
+
 ### Система типов (shorthand)
 
 | DSL                    | XML                                    |
@@ -118,4 +125,10 @@ powershell.exe -NoProfile -File .claude\skills\form-compile\scripts\form-compile
 ```
 
 Структура в сводке должна совпадать с определением в JSON.
+
+## Особенности для внешних обработок (EPF)
+
+- **Тип главного реквизита**: `ExternalDataProcessorObject.ИмяОбработки` (не `DataProcessorObject`)
+- **DataPath**: используйте реквизиты формы (`ИмяРеквизита`), а не `Объект.ИмяРеквизита` — у внешних обработок нет реквизитов объекта в метаданных
+- **Ссылочные типы**: `CatalogRef.XXX`, `DocumentRef.XXX` и т.д. могут не собраться в пустой базе — используйте `string` или базовые типы для автономной сборки
 

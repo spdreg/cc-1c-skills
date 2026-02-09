@@ -42,14 +42,14 @@ powershell.exe -NoProfile -File .claude\skills\form-info\scripts\form-info.ps1 -
 ### Заголовок
 
 ```
-=== Form: ФормаДокумента (Documents.РеализацияТоваровУслуг) ===
+=== Form: ФормаДокумента — "Реализация товаров и услуг" (Documents.РеализацияТоваровУслуг) ===
 ```
 
-Имя формы и контекст объекта определяются из пути к файлу.
+Имя формы, заголовок (Title) и контекст объекта определяются из пути к файлу и XML.
 
 ### Properties — свойства формы
 
-Только нестандартные свойства (отличающиеся от умолчания):
+Только нестандартные свойства (отличающиеся от умолчания). Title показывается в заголовке, не здесь:
 
 ```
 Properties: AutoTitle=false, WindowOpeningMode=LockOwnerWindow, CommandBarLocation=Bottom
@@ -110,7 +110,9 @@ Elements:
 - `[ro]` — ReadOnly=true
 - `,collapse` — Behavior=Collapsible (для групп)
 
-**Привязка**: `-> Объект.Поле` — DataPath или CommandName
+**Привязка к данным**: `-> Объект.Поле` — DataPath
+
+**Привязка к команде**: `-> ИмяКоманды [cmd]` — команда формы, `-> Close [std]` — стандартная команда
 
 **События**: `{OnChange, StartChoice}` — имена обработчиков
 

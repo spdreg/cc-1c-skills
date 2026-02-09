@@ -253,7 +253,16 @@ function Build-Tree($childItemsNode, [string]$prefix, [bool]$isLast) {
 			$binding = " -> $($dp.InnerText)"
 		} else {
 			$cn = $child.SelectSingleNode("d:CommandName", $ns)
-			if ($cn) { $binding = " -> $($cn.InnerText)" }
+			if ($cn) {
+				$cnVal = $cn.InnerText
+				if ($cnVal -match '^Form\.StandardCommand\.(.+)$') {
+					$binding = " -> $($Matches[1]) [std]"
+				} elseif ($cnVal -match '^Form\.Command\.(.+)$') {
+					$binding = " -> $($Matches[1]) [cmd]"
+				} else {
+					$binding = " -> $cnVal"
+				}
+			}
 		}
 
 		# Title differs?
@@ -322,16 +331,23 @@ if ($formsIdx -ge 0 -and ($formsIdx + 1) -lt $parts.Count) {
 
 $lines = @()
 
-# Header
+# Header — include Title if present
+$titleNode = $root.SelectSingleNode("d:Title", $ns)
+$formTitle = $null
+if ($titleNode) {
+	$formTitle = Get-MLText $titleNode
+	if (-not $formTitle) { $formTitle = $titleNode.InnerText }
+}
 $header = "=== Form: $formName"
+if ($formTitle) { $header += " — `"$formTitle`"" }
 if ($objectContext) { $header += " ($objectContext)" }
 $header += " ==="
 $lines += $header
 
-# --- Form properties ---
+# --- Form properties (Title excluded — shown in header) ---
 
 $propNames = @(
-	"Title", "Width", "Height", "Group",
+	"Width", "Height", "Group",
 	"WindowOpeningMode", "EnterKeyBehavior", "AutoTitle", "AutoURL",
 	"AutoFillCheck", "Customizable", "CommandBarLocation",
 	"SaveDataInSettings", "AutoSaveDataInSettings",
