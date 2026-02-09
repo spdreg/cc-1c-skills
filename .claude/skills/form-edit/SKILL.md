@@ -1,5 +1,5 @@
 ---
-name: form-add
+name: form-edit
 description: Добавление элементов, реквизитов и команд в существующую управляемую форму 1С (Form.xml)
 argument-hint: <FormPath> <JsonPath>
 allowed-tools:
@@ -9,14 +9,14 @@ allowed-tools:
   - Glob
 ---
 
-# /form-add — Добавление в форму
+# /form-edit — Редактирование формы
 
 Добавляет элементы, реквизиты и/или команды в существующий Form.xml. Автоматически выделяет ID из правильного пула, генерирует companion-элементы (ContextMenu, ExtendedTooltip, и др.) и обработчики событий.
 
 ## Использование
 
 ```
-/form-add <FormPath> <JsonPath>
+/form-edit <FormPath> <JsonPath>
 ```
 
 ## Параметры
@@ -29,7 +29,7 @@ allowed-tools:
 ## Команда
 
 ```powershell
-powershell.exe -NoProfile -File .claude\skills\form-add\scripts\form-add.ps1 -FormPath "<путь>" -JsonPath "<путь>"
+powershell.exe -NoProfile -File .claude\skills\form-edit\scripts\form-edit.ps1 -FormPath "<путь>" -JsonPath "<путь>"
 ```
 
 ## JSON формат
@@ -99,7 +99,7 @@ powershell.exe -NoProfile -File .claude\skills\form-add\scripts\form-add.ps1 -Fo
 ## Вывод
 
 ```
-=== form-add: Форма ===
+=== form-edit: Форма ===
 
 Added elements (into ГруппаШапка, after Контрагент):
   + [Input] Склад -> Объект.Склад {OnChange}
@@ -122,6 +122,6 @@ Run /form-validate to verify.
 
 1. `/form-info` — посмотреть текущую структуру формы
 2. Создать JSON с описанием добавлений
-3. `/form-add` — добавить в форму
+3. `/form-edit` — добавить в форму
 4. `/form-validate` — проверить корректность
 5. `/form-info` — убедиться что добавилось правильно

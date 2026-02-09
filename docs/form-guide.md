@@ -9,7 +9,7 @@
 | `/form-info` | `<FormPath>` | Компактная сводка: дерево элементов, реквизиты, команды, события |
 | `/form-compile` | `<JsonPath> <OutputPath>` | Генерация Form.xml из компактного JSON-определения |
 | `/form-validate` | `<FormPath>` | Валидация: уникальность ID, companions, DataPath, команды |
-| `/form-add` | `<FormPath> <JsonPath>` | Добавление элементов, реквизитов, команд в существующую форму |
+| `/form-edit` | `<FormPath> <JsonPath>` | Добавление элементов, реквизитов, команд в существующую форму |
 | `/form-patterns` | (без параметров) | Справочник паттернов: архетипы, конвенции именования, продвинутые приёмы |
 
 ## Сценарии использования
@@ -55,13 +55,13 @@ Commands:
 
 ### Добавление элементов в существующую форму
 
-`/form-add` добавляет элементы, реквизиты и команды в существующий Form.xml. Автоматически назначает ID, генерирует companion-элементы и обработчики событий.
+`/form-edit` добавляет элементы, реквизиты и команды в существующий Form.xml. Автоматически назначает ID, генерирует companion-элементы и обработчики событий.
 
 ```
 > Добавь поле "Склад" в шапку формы после "Контрагент"
 ```
 
-Claude вызовет `/form-info` для анализа структуры, создаст JSON и вызовет `/form-add`:
+Claude вызовет `/form-info` для анализа структуры, создаст JSON и вызовет `/form-edit`:
 
 ```json
 {
@@ -193,7 +193,7 @@ Claude создаст JSON-определение и вызовет `/form-compi
 > /form-info upload/acc_8.3.24/Documents/РеализацияТоваровУслуг/Forms/ФормаДокумента/Ext/Form.xml
 > /form-info src/МояОбработка/Forms/Форма/Ext/Form.xml
 > /form-compile src/form.json src/МояОбработка/Forms/Форма/Ext/Form.xml
-> /form-add src/МояОбработка/Forms/Форма/Ext/Form.xml src/additions.json
+> /form-edit src/МояОбработка/Forms/Форма/Ext/Form.xml src/additions.json
 > /form-validate src/МояОбработка/Forms/Форма/Ext/Form.xml
 ```
 
@@ -203,7 +203,7 @@ Claude создаст JSON-определение и вызовет `/form-compi
 
 1. `/epf-add-form` — создать форму (каркас)
 2. `/form-compile` — сгенерировать Form.xml из JSON-определения
-3. `/form-add` — добавить элементы/реквизиты/команды в существующую форму
+3. `/form-edit` — добавить элементы/реквизиты/команды в существующую форму
 4. `/form-validate` — проверить корректность
 5. `/form-info` — проанализировать результат
 6. `/epf-build` — собрать EPF
@@ -211,5 +211,5 @@ Claude создаст JSON-определение и вызовет `/form-compi
 ## Спецификации
 
 - [Управляемая форма](1c-form-spec.md) — Form.xml, элементы, команды, реквизиты, система типов
-- [Form DSL](form-dsl-spec.md) — JSON-формат описания формы для `/form-compile` и `/form-add`
+- [Form DSL](form-dsl-spec.md) — JSON-формат описания формы для `/form-compile` и `/form-edit`
 - [Паттерны компоновки](form-patterns.md) — типовые архетипы форм, конвенции именования, примеры DSL

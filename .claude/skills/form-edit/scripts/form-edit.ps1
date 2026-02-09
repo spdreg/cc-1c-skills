@@ -54,7 +54,7 @@ if ($parentDir) {
 	}
 }
 
-Write-Host "=== form-add: $formName ==="
+Write-Host "=== form-edit: $formName ==="
 Write-Host ""
 
 # === 4. Scan max IDs per pool ===
