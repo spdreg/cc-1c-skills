@@ -360,7 +360,12 @@ if ($Mode -eq "overview") {
 			$paramStr = if ($paramNode) { " param=$($paramNode.InnerText)" } else { "" }
 			$linkStrs += "$srcDs.$srcExpr -> $dstDs.$dstExpr$paramStr"
 		}
-		$lines.Add("Links: " + ($linkStrs -join "; "))
+		if ($linkStrs.Count -le 2) {
+			$lines.Add("Links: " + ($linkStrs -join "; "))
+		} else {
+			$lines.Add("Links ($($linkStrs.Count)):")
+			foreach ($ls in $linkStrs) { $lines.Add("  $ls") }
+		}
 	} else {
 		$lines.Add("Links: (none)")
 	}
@@ -372,40 +377,71 @@ if ($Mode -eq "overview") {
 		foreach ($cf in $calcFields) {
 			$calcNames += $cf.SelectSingleNode("s:dataPath", $ns).InnerText
 		}
-		$lines.Add("Calculated: " + ($calcNames -join ", "))
+		if ($calcNames.Count -le 10) {
+			$lines.Add("Calculated: " + ($calcNames -join ", "))
+		} else {
+			$lines.Add("Calculated ($($calcNames.Count)): " + (($calcNames[0..9] -join ", ")) + ", ...")
+		}
 	}
 
 	# Totals
 	$totalFields = $root.SelectNodes("s:totalField", $ns)
 	if ($totalFields.Count -gt 0) {
-		$totalStrs = @()
-		foreach ($tf in $totalFields) {
-			$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
-			$tfExpr = $tf.SelectSingleNode("s:expression", $ns).InnerText
-			$tfGroup = $tf.SelectSingleNode("s:group", $ns)
-			$groupStr = ""
-			if ($tfGroup) { $groupStr = " [group:$($tfGroup.InnerText)]" }
-			$totalStrs += "$tfPath=$tfExpr$groupStr"
+		if ($totalFields.Count -le 5) {
+			$totalStrs = @()
+			foreach ($tf in $totalFields) {
+				$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
+				$tfExpr = $tf.SelectSingleNode("s:expression", $ns).InnerText
+				$tfGroup = $tf.SelectSingleNode("s:group", $ns)
+				$groupStr = ""
+				if ($tfGroup) { $groupStr = " [group:$($tfGroup.InnerText)]" }
+				$totalStrs += "$tfPath=$tfExpr$groupStr"
+			}
+			$lines.Add("Totals: " + ($totalStrs -join ", "))
+		} else {
+			# Compact: group by dataPath, show unique paths with count
+			$pathCounts = [ordered]@{}
+			$hasGrouped = $false
+			foreach ($tf in $totalFields) {
+				$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
+				$tfGroup = $tf.SelectSingleNode("s:group", $ns)
+				if ($tfGroup) { $hasGrouped = $true }
+				if (-not $pathCounts.Contains($tfPath)) { $pathCounts[$tfPath] = 0 }
+				$pathCounts[$tfPath] = $pathCounts[$tfPath] + 1
+			}
+			$uniquePaths = @($pathCounts.Keys)
+			$groupNote = if ($hasGrouped) { ", some with group-specific formulas" } else { "" }
+			if ($uniquePaths.Count -le 10) {
+				$lines.Add("Totals ($($totalFields.Count) for $($uniquePaths.Count) fields$groupNote): " + ($uniquePaths -join ", "))
+			} else {
+				$lines.Add("Totals ($($totalFields.Count) for $($uniquePaths.Count) fields$groupNote):")
+				$lines.Add("  " + (($uniquePaths[0..14] -join ", ")) + ", ...")
+			}
 		}
-		$lines.Add("Totals: " + ($totalStrs -join ", "))
 	}
 
 	# Templates
 	$templates = $root.SelectNodes("s:template", $ns)
 	$groupTemplates = $root.SelectNodes("s:groupTemplate", $ns)
 	if ($templates.Count -gt 0 -or $groupTemplates.Count -gt 0) {
-		$tplStrs = @()
+		$tplNames = @()
 		foreach ($tpl in $templates) {
-			$tplName = $tpl.SelectSingleNode("s:name", $ns).InnerText
-			$tplStrs += $tplName
+			$tplNames += $tpl.SelectSingleNode("s:name", $ns).InnerText
 		}
+		$gtStrs = @()
 		foreach ($gt in $groupTemplates) {
 			$gtField = $gt.SelectSingleNode("s:groupField", $ns).InnerText
 			$gtType = $gt.SelectSingleNode("s:templateType", $ns).InnerText
 			$gtTpl = $gt.SelectSingleNode("s:template", $ns).InnerText
-			$tplStrs += "$gtTpl($gtField/$gtType)"
+			$gtStrs += "$gtTpl($gtField/$gtType)"
 		}
-		$lines.Add("Templates: " + ($tplStrs -join ", "))
+		$totalTpl = $tplNames.Count + $gtStrs.Count
+		if ($totalTpl -le 10) {
+			$all = $tplNames + $gtStrs
+			$lines.Add("Templates: " + ($all -join ", "))
+		} else {
+			$lines.Add("Templates: $($tplNames.Count) templates, $($groupTemplates.Count) group bindings")
+		}
 	}
 
 	# Parameters
@@ -416,7 +452,11 @@ if ($Mode -eq "overview") {
 			$pName = $p.SelectSingleNode("s:name", $ns).InnerText
 			$paramStrs += $pName
 		}
-		$lines.Add("Params ($($params.Count)): " + ($paramStrs -join ", "))
+		if ($params.Count -le 15) {
+			$lines.Add("Params ($($params.Count)): " + ($paramStrs -join ", "))
+		} else {
+			$lines.Add("Params ($($params.Count)): " + (($paramStrs[0..9] -join ", ")) + ", ...")
+		}
 	} else {
 		$lines.Add("Params: (none)")
 	}
@@ -448,6 +488,16 @@ if ($Mode -eq "overview") {
 					$structItems += "$siType$groupStr"
 				}
 			}
+			# Compact: if many identical items, show count
+			if ($structItems.Count -gt 3) {
+				$grouped = $structItems | Group-Object | Sort-Object Count -Descending
+				$compactParts = @()
+				foreach ($g in $grouped) {
+					if ($g.Count -gt 1) { $compactParts += "$($g.Count)x $($g.Name)" }
+					else { $compactParts += $g.Name }
+				}
+				$structItems = $compactParts
+			}
 			$structStr = if ($structItems.Count -gt 0) { "  " + ($structItems -join ", ") } else { "" }
 
 			$filterCount = 0
@@ -471,16 +521,21 @@ elseif ($Mode -eq "query") {
 	$targetDs = $null
 
 	if ($Name) {
-		# Search by name in top-level and nested
+		# Search by name: prefer nested Query items over parent Union
+		# Pass 1: search nested items first
 		foreach ($ds in $dataSets) {
-			$dsNameNode = $ds.SelectSingleNode("s:name", $ns)
-			if ($dsNameNode -and $dsNameNode.InnerText -eq $Name) { $targetDs = $ds; break }
-			# Search in Union items
 			foreach ($subDs in $ds.SelectNodes("s:item", $ns)) {
 				$subNameNode = $subDs.SelectSingleNode("s:name", $ns)
 				if ($subNameNode -and $subNameNode.InnerText -eq $Name) { $targetDs = $subDs; break }
 			}
 			if ($targetDs) { break }
+		}
+		# Pass 2: search top-level
+		if (-not $targetDs) {
+			foreach ($ds in $dataSets) {
+				$dsNameNode = $ds.SelectSingleNode("s:name", $ns)
+				if ($dsNameNode -and $dsNameNode.InnerText -eq $Name) { $targetDs = $ds; break }
+			}
 		}
 		if (-not $targetDs) {
 			Write-Error "Dataset '$Name' not found"
@@ -506,7 +561,18 @@ elseif ($Mode -eq "query") {
 
 	$queryNode = $targetDs.SelectSingleNode("s:query", $ns)
 	if (-not $queryNode) {
-		Write-Error "Dataset has no query element"
+		# If this is a Union, list nested query datasets
+		$dsType = Get-DataSetType $targetDs
+		if ($dsType -eq "Union") {
+			$subNames = @()
+			foreach ($subDs in $targetDs.SelectNodes("s:item", $ns)) {
+				$sn = $subDs.SelectSingleNode("s:name", $ns)
+				if ($sn) { $subNames += $sn.InnerText }
+			}
+			Write-Error "Dataset '$($targetDs.SelectSingleNode("s:name", $ns).InnerText)' is a Union. Specify nested: $($subNames -join ', ')"
+		} else {
+			Write-Error "Dataset has no query element"
+		}
 		exit 1
 	}
 
