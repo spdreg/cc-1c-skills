@@ -40,6 +40,7 @@
 - [MXL DSL](docs/mxl-dsl-spec.md) — JSON-формат описания макета для `/mxl-compile` и `/mxl-decompile`
 - [Form DSL](docs/form-dsl-spec.md) — JSON-формат описания формы для `/form-compile`
 - [Роли (Rights.xml)](docs/1c-role-spec.md) — XML-формат прав роли, типы объектов, RLS
+- [Role DSL](docs/role-dsl-spec.md) — JSON-формат описания ролей для `/role-compile`
 
 ## Структура репозитория
 
