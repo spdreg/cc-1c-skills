@@ -80,10 +80,70 @@ foreach ($ds in $def.dataSets) {
 
 # --- 4. Type system ---
 
+# Type synonyms — normalize Russian/common names to canonical DSL types
+# Use case-sensitive hashtable to avoid PS 5.1 DuplicateKeyInHashLiteral
+$script:typeSynonyms = New-Object System.Collections.Hashtable
+# Russian names (case doesn't matter — we'll also do case-insensitive lookup)
+$script:typeSynonyms["число"] = "decimal"
+$script:typeSynonyms["строка"] = "string"
+$script:typeSynonyms["булево"] = "boolean"
+$script:typeSynonyms["дата"] = "date"
+$script:typeSynonyms["датавремя"] = "dateTime"
+$script:typeSynonyms["стандартныйпериод"] = "StandardPeriod"
+# English canonical (lowercase for lookup)
+$script:typeSynonyms["bool"] = "boolean"
+$script:typeSynonyms["str"] = "string"
+$script:typeSynonyms["int"] = "decimal"
+$script:typeSynonyms["integer"] = "decimal"
+$script:typeSynonyms["number"] = "decimal"
+$script:typeSynonyms["num"] = "decimal"
+# Reference synonyms (Russian, lowercase)
+$script:typeSynonyms["справочникссылка"] = "CatalogRef"
+$script:typeSynonyms["документссылка"] = "DocumentRef"
+$script:typeSynonyms["перечислениессылка"] = "EnumRef"
+$script:typeSynonyms["плансчетовссылка"] = "ChartOfAccountsRef"
+$script:typeSynonyms["планвидовхарактеристикссылка"] = "ChartOfCharacteristicTypesRef"
+
+function Resolve-TypeStr {
+	param([string]$typeStr)
+	if (-not $typeStr) { return $typeStr }
+
+	# Check for parameterized types: число(15,2), строка(100), etc.
+	if ($typeStr -match '^([^(]+)\((.+)\)$') {
+		$baseName = $Matches[1].Trim()
+		$params = $Matches[2]
+
+		# Resolve base name (case-insensitive via .ToLower())
+		$resolved = $script:typeSynonyms[$baseName.ToLower()]
+		if ($resolved) { return "$resolved($params)" }
+
+		return $typeStr
+	}
+
+	# Check for reference types: СправочникСсылка.Организации → CatalogRef.Организации
+	if ($typeStr.Contains('.')) {
+		$dotIdx = $typeStr.IndexOf('.')
+		$prefix = $typeStr.Substring(0, $dotIdx)
+		$suffix = $typeStr.Substring($dotIdx)  # includes the dot
+		$resolved = $script:typeSynonyms[$prefix.ToLower()]
+		if ($resolved) { return "$resolved$suffix" }
+		return $typeStr
+	}
+
+	# Simple name lookup (case-insensitive)
+	$resolved = $script:typeSynonyms[$typeStr.ToLower()]
+	if ($resolved) { return $resolved }
+
+	return $typeStr
+}
+
 function Emit-ValueType {
 	param([string]$typeStr, [string]$indent)
 
 	if (-not $typeStr) { return }
+
+	# Resolve synonyms first
+	$typeStr = Resolve-TypeStr $typeStr
 
 	# boolean
 	if ($typeStr -eq "boolean") {
@@ -178,7 +238,7 @@ function Parse-FieldShorthand {
 	if ($s.Contains(':')) {
 		$parts = $s -split ':', 2
 		$result.dataPath = $parts[0].Trim()
-		$result.type = $parts[1].Trim()
+		$result.type = Resolve-TypeStr ($parts[1].Trim())
 	} else {
 		$result.dataPath = $s
 	}
@@ -211,12 +271,18 @@ function Parse-TotalShorthand {
 function Parse-ParamShorthand {
 	param([string]$s)
 
-	$result = @{ name = ""; type = ""; value = $null }
+	$result = @{ name = ""; type = ""; value = $null; autoDates = $false }
+
+	# Extract @autoDates flag
+	if ($s -match '@autoDates') {
+		$result.autoDates = $true
+		$s = $s -replace '\s*@autoDates', ''
+	}
 
 	# Split "Name: Type = Value"
 	if ($s -match '^([^:]+):\s*(\S+)(\s*=\s*(.+))?$') {
 		$result.name = $Matches[1].Trim()
-		$result.type = $Matches[2].Trim()
+		$result.type = Resolve-TypeStr ($Matches[2].Trim())
 		if ($Matches[4]) {
 			$result.value = $Matches[4].Trim()
 		}
@@ -241,6 +307,128 @@ function Parse-CalcShorthand {
 		}
 	}
 	return @{ dataPath = $s.Trim(); expression = "" }
+}
+
+# --- 8b. DataParameter shorthand parser ---
+# Formats: "Период = LastMonth @user", "Организация @off @user", "Период @user"
+function Parse-DataParamShorthand {
+	param([string]$s)
+
+	$result = @{ parameter = ""; value = $null; use = $true; userSettingID = $null; viewMode = $null }
+
+	# Extract @flags
+	if ($s -match '@user') {
+		$result.userSettingID = "auto"
+		$s = $s -replace '\s*@user', ''
+	}
+	if ($s -match '@off') {
+		$result.use = $false
+		$s = $s -replace '\s*@off', ''
+	}
+	if ($s -match '@quickAccess') {
+		$result.viewMode = "QuickAccess"
+		$s = $s -replace '\s*@quickAccess', ''
+	}
+	if ($s -match '@normal') {
+		$result.viewMode = "Normal"
+		$s = $s -replace '\s*@normal', ''
+	}
+
+	$s = $s.Trim()
+
+	# Split "Name = Value"
+	if ($s -match '^([^=]+)=\s*(.+)$') {
+		$result.parameter = $Matches[1].Trim()
+		$valStr = $Matches[2].Trim()
+
+		# Detect StandardPeriod variants
+		$periodVariants = @("Custom","Today","ThisWeek","ThisTenDays","ThisMonth","ThisQuarter","ThisHalfYear","ThisYear","FromBeginningOfThisWeek","FromBeginningOfThisTenDays","FromBeginningOfThisMonth","FromBeginningOfThisQuarter","FromBeginningOfThisHalfYear","FromBeginningOfThisYear","LastWeek","LastTenDays","LastMonth","LastQuarter","LastHalfYear","LastYear","NextDay","NextWeek","NextTenDays","NextMonth","NextQuarter","NextHalfYear","NextYear","TillEndOfThisWeek","TillEndOfThisTenDays","TillEndOfThisMonth","TillEndOfThisQuarter","TillEndOfThisHalfYear","TillEndOfThisYear")
+		if ($periodVariants -contains $valStr) {
+			$result.value = @{ variant = $valStr }
+		} elseif ($valStr -match '^\d{4}-\d{2}-\d{2}T') {
+			$result.value = $valStr
+		} elseif ($valStr -eq "true" -or $valStr -eq "false") {
+			$result.value = [bool]($valStr -eq "true")
+		} else {
+			$result.value = $valStr
+		}
+	} else {
+		$result.parameter = $s
+	}
+
+	return $result
+}
+
+# --- 8c. Filter item shorthand parser ---
+# Formats: "Организация = _ @off @user", "Дата >= 2024-01-01T00:00:00", "Статус filled"
+function Parse-FilterShorthand {
+	param([string]$s)
+
+	$result = @{ field = ""; op = "Equal"; value = $null; use = $true; userSettingID = $null; viewMode = $null; presentation = $null }
+
+	# Extract @flags
+	if ($s -match '@user') {
+		$result.userSettingID = "auto"
+		$s = $s -replace '\s*@user', ''
+	}
+	if ($s -match '@off') {
+		$result.use = $false
+		$s = $s -replace '\s*@off', ''
+	}
+	if ($s -match '@quickAccess') {
+		$result.viewMode = "QuickAccess"
+		$s = $s -replace '\s*@quickAccess', ''
+	}
+
+	$s = $s.Trim()
+
+	# Try to match: Field op Value, or Field op (no value for filled/notFilled)
+	# Operators sorted longest first to match >= before >
+	$opPatterns = @('<>', '>=', '<=', '=', '>', '<',
+		'notIn\b', 'in\b', 'inHierarchy\b', 'inListByHierarchy\b',
+		'notContains\b', 'contains\b', 'notBeginsWith\b', 'beginsWith\b',
+		'notFilled\b', 'filled\b')
+	$opJoined = $opPatterns -join '|'
+
+	if ($s -match "^(.+?)\s+($opJoined)\s*(.*)?$") {
+		$result.field = $Matches[1].Trim()
+		$opRaw = $Matches[2].Trim()
+		$valPart = if ($Matches[3]) { $Matches[3].Trim() } else { "" }
+
+		# Map op
+		$opMap = @{
+			"=" = "Equal"; "<>" = "NotEqual"; ">" = "Greater"; ">=" = "GreaterOrEqual"
+			"<" = "Less"; "<=" = "LessOrEqual"; "in" = "InList"; "notIn" = "NotInList"
+			"inHierarchy" = "InHierarchy"; "inListByHierarchy" = "InListByHierarchy"
+			"contains" = "Contains"; "notContains" = "NotContains"
+			"beginsWith" = "BeginsWith"; "notBeginsWith" = "NotBeginsWith"
+			"filled" = "Filled"; "notFilled" = "NotFilled"
+		}
+		$mapped = $opMap[$opRaw]
+		if ($mapped) { $result.op = $opRaw } else { $result.op = $opRaw }
+
+		# Parse value (skip "_" which means empty/placeholder)
+		if ($valPart -and $valPart -ne "_") {
+			if ($valPart -eq "true" -or $valPart -eq "false") {
+				$result.value = [bool]($valPart -eq "true")
+				$result["valueType"] = "xs:boolean"
+			} elseif ($valPart -match '^\d{4}-\d{2}-\d{2}T') {
+				$result.value = $valPart
+				$result["valueType"] = "xs:dateTime"
+			} elseif ($valPart -match '^\d+(\.\d+)?$') {
+				$result.value = $valPart
+				$result["valueType"] = "xs:decimal"
+			} else {
+				$result.value = $valPart
+				$result["valueType"] = "xs:string"
+			}
+		}
+	} else {
+		# No operator found — just a field name
+		$result.field = $s
+	}
+
+	return $result
 }
 
 # --- 9. Comparison type mapper ---
@@ -293,7 +481,7 @@ function Emit-Field {
 			dataPath = "$($fieldDef.dataPath)"
 			field = if ($fieldDef.field) { "$($fieldDef.field)" } else { "$($fieldDef.dataPath)" }
 			title = if ($fieldDef.title) { "$($fieldDef.title)" } else { "" }
-			type = if ($fieldDef.type) { "$($fieldDef.type)" } else { "" }
+			type = if ($fieldDef.type) { Resolve-TypeStr "$($fieldDef.type)" } else { "" }
 			roles = @()
 			restrict = @()
 			appearance = @{}
@@ -511,8 +699,9 @@ function Emit-CalcFields {
 				Emit-MLText -tag "title" -text "$($cf.title)" -indent "`t`t"
 			}
 			if ($cf.type) {
+				$cfType = Resolve-TypeStr "$($cf.type)"
 				X "`t`t<valueType>"
-				Emit-ValueType -typeStr "$($cf.type)" -indent "`t`t`t"
+				Emit-ValueType -typeStr $cfType -indent "`t`t`t"
 				X "`t`t</valueType>"
 			}
 			if ($cf.restrict) {
@@ -568,6 +757,52 @@ function Emit-TotalFields {
 }
 
 # === Parameters ===
+
+function Emit-SingleParam {
+	param($p, $parsed)
+
+	X "`t<parameter>"
+	X "`t`t<name>$(Esc-Xml $parsed.name)</name>"
+
+	# Title
+	$title = if ($p -isnot [string] -and $p.title) { "$($p.title)" } else { "" }
+	if ($title) {
+		Emit-MLText -tag "title" -text $title -indent "`t`t"
+	}
+
+	# ValueType
+	if ($parsed.type) {
+		X "`t`t<valueType>"
+		Emit-ValueType -typeStr $parsed.type -indent "`t`t`t"
+		X "`t`t</valueType>"
+	}
+
+	# Value
+	Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t"
+
+	# UseRestriction
+	if ($p -isnot [string] -and $p.useRestriction -eq $true) {
+		X "`t`t<useRestriction>true</useRestriction>"
+	}
+
+	# Expression
+	if ($parsed.expression) {
+		X "`t`t<expression>$(Esc-Xml $parsed.expression)</expression>"
+	}
+
+	# AvailableAsField
+	if ($parsed.availableAsField -eq $false) {
+		X "`t`t<availableAsField>false</availableAsField>"
+	}
+
+	# Use
+	if ($p -isnot [string] -and $p.use) {
+		X "`t`t<use>$($p.use)</use>"
+	}
+
+	X "`t</parameter>"
+}
+
 function Emit-Parameters {
 	if (-not $def.parameters) { return }
 	foreach ($p in $def.parameters) {
@@ -576,51 +811,31 @@ function Emit-Parameters {
 		} else {
 			$parsed = @{
 				name = "$($p.name)"
-				type = if ($p.type) { "$($p.type)" } else { "" }
+				type = if ($p.type) { Resolve-TypeStr "$($p.type)" } else { "" }
 				value = $p.value
+				autoDates = $false
 			}
+			if ($p.expression) { $parsed.expression = "$($p.expression)" }
+			if ($p.availableAsField -eq $false) { $parsed.availableAsField = $false }
+			if ($p.autoDates -eq $true) { $parsed.autoDates = $true }
 		}
 
-		X "`t<parameter>"
-		X "`t`t<name>$(Esc-Xml $parsed.name)</name>"
+		Emit-SingleParam -p $p -parsed $parsed
 
-		# Title
-		$title = if ($p -isnot [string] -and $p.title) { "$($p.title)" } else { "" }
-		if ($title) {
-			Emit-MLText -tag "title" -text $title -indent "`t`t"
+		# @autoDates: auto-generate ДатаНачала and ДатаОкончания
+		if ($parsed.autoDates) {
+			$paramName = $parsed.name
+			$beginParsed = @{
+				name = "ДатаНачала"; type = "date"; value = $null
+				expression = "&$paramName.ДатаНачала"; availableAsField = $false
+			}
+			Emit-SingleParam -p $null -parsed $beginParsed
+			$endParsed = @{
+				name = "ДатаОкончания"; type = "date"; value = $null
+				expression = "&$paramName.ДатаОкончания"; availableAsField = $false
+			}
+			Emit-SingleParam -p $null -parsed $endParsed
 		}
-
-		# ValueType
-		if ($parsed.type) {
-			X "`t`t<valueType>"
-			Emit-ValueType -typeStr $parsed.type -indent "`t`t`t"
-			X "`t`t</valueType>"
-		}
-
-		# Value
-		Emit-ParamValue -type $parsed.type -val $parsed.value -indent "`t`t"
-
-		# UseRestriction
-		if ($p -isnot [string] -and $p.useRestriction -eq $true) {
-			X "`t`t<useRestriction>true</useRestriction>"
-		}
-
-		# Expression
-		if ($p -isnot [string] -and $p.expression) {
-			X "`t`t<expression>$(Esc-Xml "$($p.expression)")</expression>"
-		}
-
-		# AvailableAsField
-		if ($p -isnot [string] -and $p.availableAsField -eq $false) {
-			X "`t`t<availableAsField>false</availableAsField>"
-		}
-
-		# Use
-		if ($p -isnot [string] -and $p.use) {
-			X "`t`t<use>$($p.use)</use>"
-		}
-
-		X "`t</parameter>"
 	}
 }
 
@@ -806,7 +1021,31 @@ function Emit-Filter {
 
 	X "$indent<dcsset:filter>"
 	foreach ($item in $items) {
-		Emit-FilterItem -item $item -indent "$indent`t"
+		if ($item -is [string]) {
+			# Parse shorthand: "Организация = _ @off @user"
+			$parsed = Parse-FilterShorthand $item
+			$filterObj = New-Object PSObject
+			$filterObj | Add-Member -NotePropertyName "field" -NotePropertyValue $parsed.field
+			$filterObj | Add-Member -NotePropertyName "op" -NotePropertyValue $parsed.op
+			if ($parsed.use -eq $false) {
+				$filterObj | Add-Member -NotePropertyName "use" -NotePropertyValue $false
+			}
+			if ($null -ne $parsed.value) {
+				$filterObj | Add-Member -NotePropertyName "value" -NotePropertyValue $parsed.value
+			}
+			if ($parsed["valueType"]) {
+				$filterObj | Add-Member -NotePropertyName "valueType" -NotePropertyValue $parsed["valueType"]
+			}
+			if ($parsed.userSettingID) {
+				$filterObj | Add-Member -NotePropertyName "userSettingID" -NotePropertyValue $parsed.userSettingID
+			}
+			if ($parsed.viewMode) {
+				$filterObj | Add-Member -NotePropertyName "viewMode" -NotePropertyValue $parsed.viewMode
+			}
+			Emit-FilterItem -item $filterObj -indent "$indent`t"
+		} else {
+			Emit-FilterItem -item $item -indent "$indent`t"
+		}
 	}
 	X "$indent</dcsset:filter>"
 }
@@ -873,6 +1112,26 @@ function Emit-DataParameters {
 
 	X "$indent<dcsset:dataParameters>"
 	foreach ($dp in $items) {
+		# Support string shorthand
+		if ($dp -is [string]) {
+			$parsed = Parse-DataParamShorthand $dp
+			$dpObj = New-Object PSObject
+			$dpObj | Add-Member -NotePropertyName "parameter" -NotePropertyValue $parsed.parameter
+			if ($null -ne $parsed.value) {
+				$dpObj | Add-Member -NotePropertyName "value" -NotePropertyValue $parsed.value
+			}
+			if ($parsed.use -eq $false) {
+				$dpObj | Add-Member -NotePropertyName "use" -NotePropertyValue $false
+			}
+			if ($parsed.userSettingID) {
+				$dpObj | Add-Member -NotePropertyName "userSettingID" -NotePropertyValue $parsed.userSettingID
+			}
+			if ($parsed.viewMode) {
+				$dpObj | Add-Member -NotePropertyName "viewMode" -NotePropertyValue $parsed.viewMode
+			}
+			$dp = $dpObj
+		}
+
 		X "$indent`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
 
 		if ($dp.use -eq $false) {
@@ -883,8 +1142,13 @@ function Emit-DataParameters {
 
 		# Value
 		if ($null -ne $dp.value) {
-			if ($dp.value.variant) {
-				# StandardPeriod
+			if ($dp.value -is [PSCustomObject] -and $dp.value.variant) {
+				# StandardPeriod (object form from JSON)
+				X "$indent`t`t<dcscor:value xsi:type=`"v8:StandardPeriod`">"
+				X "$indent`t`t`t<v8:variant xsi:type=`"v8:StandardPeriodVariant`">$($dp.value.variant)</v8:variant>"
+				X "$indent`t`t</dcscor:value>"
+			} elseif ($dp.value -is [hashtable] -and $dp.value.variant) {
+				# StandardPeriod (hashtable from shorthand parser)
 				X "$indent`t`t<dcscor:value xsi:type=`"v8:StandardPeriod`">"
 				X "$indent`t`t`t<v8:variant xsi:type=`"v8:StandardPeriodVariant`">$($dp.value.variant)</v8:variant>"
 				X "$indent`t`t</dcscor:value>"
@@ -945,6 +1209,37 @@ function Emit-GroupItems {
 	X "$indent</dcsset:groupItems>"
 }
 
+# Parse structure string shorthand: "Организация > Номенклатура > details"
+function Parse-StructureShorthand {
+	param([string]$s)
+
+	$segments = $s -split '\s*>\s*'
+	$result = @()
+
+	# Build nested groups from right to left
+	$innermost = $null
+	for ($i = $segments.Count - 1; $i -ge 0; $i--) {
+		$seg = $segments[$i].Trim()
+		$group = New-Object PSObject
+		$group | Add-Member -NotePropertyName "type" -NotePropertyValue "group"
+
+		if ($seg -match '^(?i)(details|детали)$') {
+			# Empty groupBy = detailed records
+			$group | Add-Member -NotePropertyName "groupBy" -NotePropertyValue @()
+		} else {
+			$group | Add-Member -NotePropertyName "groupBy" -NotePropertyValue @($seg)
+		}
+
+		if ($null -ne $innermost) {
+			$group | Add-Member -NotePropertyName "children" -NotePropertyValue @($innermost)
+		}
+		$innermost = $group
+	}
+
+	if ($innermost) { $result += $innermost }
+	return ,$result
+}
+
 function Emit-StructureItem {
 	param($item, [string]$indent)
 
@@ -958,8 +1253,17 @@ function Emit-StructureItem {
 		}
 
 		Emit-GroupItems -groupBy $item.groupBy -indent "$indent`t"
-		Emit-Order -items $item.order -indent "$indent`t"
-		Emit-Selection -items $item.selection -indent "$indent`t"
+
+		# Default order to ["Auto"] if not specified
+		$orderItems = $item.order
+		if (-not $orderItems) { $orderItems = @("Auto") }
+		Emit-Order -items $orderItems -indent "$indent`t"
+
+		# Default selection to ["Auto"] if not specified
+		$selItems = $item.selection
+		if (-not $selItems) { $selItems = @("Auto") }
+		Emit-Selection -items $selItems -indent "$indent`t"
+
 		Emit-Filter -items $item.filter -indent "$indent`t"
 
 		if ($item.outputParameters) {
@@ -987,8 +1291,10 @@ function Emit-StructureItem {
 			foreach ($col in $item.columns) {
 				X "$indent`t<dcsset:column>"
 				Emit-GroupItems -groupBy $col.groupBy -indent "$indent`t`t"
-				Emit-Order -items $col.order -indent "$indent`t`t"
-				Emit-Selection -items $col.selection -indent "$indent`t`t"
+				$colOrder = $col.order; if (-not $colOrder) { $colOrder = @("Auto") }
+				Emit-Order -items $colOrder -indent "$indent`t`t"
+				$colSel = $col.selection; if (-not $colSel) { $colSel = @("Auto") }
+				Emit-Selection -items $colSel -indent "$indent`t`t"
 				X "$indent`t</dcsset:column>"
 			}
 		}
@@ -1001,8 +1307,10 @@ function Emit-StructureItem {
 					X "$indent`t`t<dcsset:name>$(Esc-Xml "$($row.name)")</dcsset:name>"
 				}
 				Emit-GroupItems -groupBy $row.groupBy -indent "$indent`t`t"
-				Emit-Order -items $row.order -indent "$indent`t`t"
-				Emit-Selection -items $row.selection -indent "$indent`t`t"
+				$rowOrder = $row.order; if (-not $rowOrder) { $rowOrder = @("Auto") }
+				Emit-Order -items $rowOrder -indent "$indent`t`t"
+				$rowSel = $row.selection; if (-not $rowSel) { $rowSel = @("Auto") }
+				Emit-Selection -items $rowSel -indent "$indent`t`t"
 				X "$indent`t</dcsset:row>"
 			}
 		}
@@ -1020,8 +1328,10 @@ function Emit-StructureItem {
 		if ($item.points) {
 			X "$indent`t<dcsset:point>"
 			Emit-GroupItems -groupBy $item.points.groupBy -indent "$indent`t`t"
-			Emit-Order -items $item.points.order -indent "$indent`t`t"
-			Emit-Selection -items $item.points.selection -indent "$indent`t`t"
+			$ptOrder = $item.points.order; if (-not $ptOrder) { $ptOrder = @("Auto") }
+			Emit-Order -items $ptOrder -indent "$indent`t`t"
+			$ptSel = $item.points.selection; if (-not $ptSel) { $ptSel = @("Auto") }
+			Emit-Selection -items $ptSel -indent "$indent`t`t"
 			X "$indent`t</dcsset:point>"
 		}
 
@@ -1029,8 +1339,10 @@ function Emit-StructureItem {
 		if ($item.series) {
 			X "$indent`t<dcsset:series>"
 			Emit-GroupItems -groupBy $item.series.groupBy -indent "$indent`t`t"
-			Emit-Order -items $item.series.order -indent "$indent`t`t"
-			Emit-Selection -items $item.series.selection -indent "$indent`t`t"
+			$srOrder = $item.series.order; if (-not $srOrder) { $srOrder = @("Auto") }
+			Emit-Order -items $srOrder -indent "$indent`t`t"
+			$srSel = $item.series.selection; if (-not $srSel) { $srSel = @("Auto") }
+			Emit-Selection -items $srSel -indent "$indent`t`t"
 			X "$indent`t</dcsset:series>"
 		}
 
@@ -1120,9 +1432,13 @@ function Emit-SettingsVariants {
 			Emit-DataParameters -items $s.dataParameters -indent "`t`t`t"
 		}
 
-		# Structure
+		# Structure (supports string shorthand: "Организация > details")
 		if ($s.structure) {
-			foreach ($item in $s.structure) {
+			$structItems = $s.structure
+			if ($structItems -is [string]) {
+				$structItems = Parse-StructureShorthand $structItems
+			}
+			foreach ($item in $structItems) {
 				Emit-StructureItem -item $item -indent "`t`t`t"
 			}
 		}

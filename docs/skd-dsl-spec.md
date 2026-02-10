@@ -153,6 +153,27 @@
 | `ChartOfAccountsRef.XXX` | `cfg:ChartOfAccountsRef.XXX` | — |
 | `StandardPeriod` | `v8:StandardPeriod` | — |
 
+### Синонимы типов
+
+Все имена типов регистронезависимые. Поддерживаются русские и альтернативные имена:
+
+| Синоним | Канонический тип |
+|---------|-----------------|
+| `число`, `Число` | `decimal` |
+| `строка`, `Строка` | `string` |
+| `булево`, `Булево`, `bool` | `boolean` |
+| `дата`, `Дата` | `date` |
+| `датаВремя`, `ДатаВремя` | `dateTime` |
+| `СтандартныйПериод` | `StandardPeriod` |
+| `int`, `integer`, `number`, `num` | `decimal` |
+| `СправочникСсылка.XXX` | `CatalogRef.XXX` |
+| `ДокументСсылка.XXX` | `DocumentRef.XXX` |
+| `ПеречислениеСсылка.XXX` | `EnumRef.XXX` |
+| `ПланСчетовСсылка.XXX` | `ChartOfAccountsRef.XXX` |
+| `ПланВидовХарактеристикСсылка.XXX` | `ChartOfCharacteristicTypesRef.XXX` |
+
+Параметризованные: `число(15,2)` → `decimal(15,2)`, `строка(100)` → `string(100)`.
+
 ### Роли
 
 | DSL shorthand | Объектная форма | XML |
@@ -239,20 +260,40 @@
 ### Shorthand
 
 ```
-"<name>: <type> [= <default>]"
+"<name>: <type> [= <default>] [@autoDates]"
 ```
 
 Примеры:
 
 ```json
 "parameters": [
-  "Период: StandardPeriod = LastMonth",
+  "Период: StandardPeriod = LastMonth @autoDates",
   "Организация: CatalogRef.Организации",
   "ДатаОтчета: date"
 ]
 ```
 
 **Парсинг:** `"A: T = V"` → `name=A`, `type=T`, `value=V`. Значение `LastMonth` и другие варианты периодов → `v8:StandardPeriod` с `v8:variant`.
+
+### @autoDates
+
+Флаг `@autoDates` в shorthand параметра автоматически генерирует два дополнительных параметра:
+- `ДатаНачала` (date, expression=`&<Имя>.ДатаНачала`, availableAsField=false)
+- `ДатаОкончания` (date, expression=`&<Имя>.ДатаОкончания`, availableAsField=false)
+
+Заменяет типовой бойлерплейт из 5 строк на 1:
+
+```json
+// Было:
+"parameters": [
+  "Период: StandardPeriod = LastMonth",
+  { "name": "ДатаНачала", "type": "date", "expression": "&Период.ДатаНачала", "availableAsField": false },
+  { "name": "ДатаОкончания", "type": "date", "expression": "&Период.ДатаОкончания", "availableAsField": false }
+]
+
+// Стало:
+"parameters": ["Период: StandardPeriod = LastMonth @autoDates"]
+```
 
 ### Объектная форма
 
@@ -382,6 +423,27 @@
 
 ### filter
 
+#### Shorthand-строка
+
+```json
+"filter": [
+  "Организация = _ @off @user",
+  "Дата >= 2024-01-01T00:00:00",
+  "Статус filled",
+  "Количество > 0"
+]
+```
+
+Формат: `"<Поле> <оператор> [<значение>] [@off] [@user] [@quickAccess]"`.
+
+- Значение `_` — пустое (placeholder, не выводится в XML)
+- `@off` → `use=false`
+- `@user` → `userSettingID=auto` (генерировать GUID)
+- `@quickAccess` → `viewMode=QuickAccess`
+- Типы значений автоопределяются: `true`/`false` → boolean, `2024-01-01T00:00:00` → dateTime, числа → decimal, прочее → string
+
+#### Объектная форма
+
 ```json
 "filter": [
   { "field": "Организация", "op": "=", "use": false, "userSettingID": "auto" },
@@ -458,6 +520,22 @@
 
 ### dataParameters
 
+#### Shorthand-строка
+
+```json
+"dataParameters": [
+  "Период = LastMonth @user",
+  "Организация @off @user"
+]
+```
+
+Формат: `"<Имя> [= <значение>] [@off] [@user] [@quickAccess] [@normal]"`.
+
+- Значения-варианты периодов (`LastMonth`, `ThisYear` и др.) автоматически оборачиваются в `v8:StandardPeriod`
+- `@off` → `use=false`, `@user` → `userSettingID=auto`
+
+#### Объектная форма
+
 ```json
 "dataParameters": [
   { "parameter": "Период", "value": { "variant": "LastMonth" }, "userSettingID": "auto" },
@@ -467,19 +545,31 @@
 
 ### structure
 
+#### String shorthand (рекомендуется для типичных случаев)
+
+```json
+"structure": "Организация > details"
+"structure": "Организация > Номенклатура > details"
+"structure": "Период > Организация > Номенклатура > details"
+```
+
+`>` разделяет уровни вложенности. Каждый сегмент — группировка по указанному полю. `details` (или `детали`) — детальные записи (пустой `groupBy`). Для каждого уровня `selection` и `order` автоматически `["Auto"]`.
+
+#### Массив объектов
+
 ```json
 "structure": [
   {
     "type": "group",
     "groupBy": ["Организация"],
-    "selection": ["Auto"],
-    "order": ["Auto"],
     "children": [
-      { "type": "group", "selection": ["Auto"], "order": ["Auto"] }
+      { "type": "group" }
     ]
   }
 ]
 ```
+
+**Умолчания:** `selection` и `order` по умолчанию `["Auto"]` на каждом уровне (в группировках, строках/колонках таблиц, точках/сериях диаграмм). Указывать явно нужно только если требуется другой набор полей.
 
 #### Группировка (group)
 
@@ -489,9 +579,9 @@
 | `name` | Имя группировки (опц.) |
 | `groupBy` | Массив полей. Пусто/опущено = детальные записи |
 | `groupType` | `"Items"` (умолч.), `"Hierarchy"`, `"HierarchyOnly"` |
-| `selection` | Выборка (как в settings) |
+| `selection` | Выборка (умолч. `["Auto"]`) |
 | `filter` | Отборы (как в settings) |
-| `order` | Сортировка (как в settings) |
+| `order` | Сортировка (умолч. `["Auto"]`) |
 | `outputParameters` | Параметры вывода (как в settings) |
 | `children` | Вложенные элементы структуры |
 
@@ -570,18 +660,15 @@
   "totalFields": ["Количество: Сумма"],
   "settingsVariants": [{
     "name": "Основной",
-    "presentation": "Основной",
     "settings": {
       "selection": ["Наименование", "Количество"],
-      "structure": [
-        { "type": "group", "order": ["Auto"], "selection": ["Auto"] }
-      ]
+      "structure": [{ "type": "group" }]
     }
   }]
 }
 ```
 
-## 12. Полный пример — средний
+## 12. Полный пример — средний (с shorthand v2)
 
 ```json
 {
@@ -590,50 +677,33 @@
       "name": "Продажи",
       "query": "ВЫБРАТЬ\n\tПродажи.Организация,\n\tПродажи.Номенклатура,\n\tПродажи.Количество,\n\tПродажи.Сумма\nИЗ\n\tРегистрНакопления.Продажи КАК Продажи\n{ГДЕ\n\tПродажи.Период >= &ДатаНачала\n\tИ Продажи.Период < &ДатаОкончания}",
       "fields": [
-        "Организация: CatalogRef.Организации @dimension",
-        "Номенклатура: CatalogRef.Номенклатура @dimension",
-        "Количество: decimal(15,3)",
-        "Сумма: decimal(15,2)"
+        "Организация: СправочникСсылка.Организации @dimension",
+        "Номенклатура: СправочникСсылка.Номенклатура @dimension",
+        "Количество: число(15,3)",
+        "Сумма: число(15,2)"
       ]
     }
   ],
-  "totalFields": [
-    "Количество: Сумма",
-    "Сумма: Сумма"
-  ],
+  "totalFields": ["Количество: Сумма", "Сумма: Сумма"],
   "parameters": [
-    "Период: StandardPeriod = LastMonth",
-    { "name": "ДатаНачала", "type": "date", "expression": "&Период.ДатаНачала", "availableAsField": false },
-    { "name": "ДатаОкончания", "type": "date", "expression": "&Период.ДатаОкончания", "availableAsField": false }
+    "Период: СтандартныйПериод = LastMonth @autoDates"
   ],
   "settingsVariants": [{
     "name": "Основной",
     "presentation": "Продажи по организациям",
     "settings": {
       "selection": ["Номенклатура", "Количество", "Сумма", "Auto"],
-      "filter": [
-        { "field": "Организация", "op": "=", "use": false, "userSettingID": "auto" }
-      ],
+      "filter": ["Организация = _ @off @user"],
       "order": ["Сумма desc", "Auto"],
       "outputParameters": {
         "Заголовок": "Анализ продаж",
         "ВыводитьЗаголовок": "Output"
       },
-      "dataParameters": [
-        { "parameter": "Период", "value": { "variant": "LastMonth" }, "userSettingID": "auto" }
-      ],
-      "structure": [
-        {
-          "type": "group",
-          "groupBy": ["Организация"],
-          "selection": ["Auto"],
-          "order": ["Auto"],
-          "children": [
-            { "type": "group", "selection": ["Auto"], "order": ["Auto"] }
-          ]
-        }
-      ]
+      "dataParameters": ["Период = LastMonth @user"],
+      "structure": "Организация > details"
     }
   }]
 }
 ```
+
+**Сравнение с v1:** средний пример сократился с 58 до 33 строк (−43%). Основная экономия: `@autoDates` (−4 строки), structure shorthand (−9 строк), filter/dataParam shorthand (−4 строки).
