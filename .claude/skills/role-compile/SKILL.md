@@ -1,7 +1,7 @@
 ---
 name: role-compile
 description: Создание роли 1С — метаданные и Rights.xml из описания прав
-argument-hint: <RoleName> <RolesDir>
+argument-hint: <JsonPath> <RolesDir>
 allowed-tools:
   - Bash
   - Read
@@ -9,199 +9,331 @@ allowed-tools:
   - Glob
 ---
 
-# /role-compile — создание роли 1С
+# /role-compile — генерация роли 1С из JSON DSL
 
-Создаёт файлы роли (метаданные + Rights.xml) по описанию прав. Скрипта нет — агент генерирует XML по шаблонам ниже.
+Принимает компактное JSON-определение роли и генерирует два файла: метаданные (`Roles/Имя.xml`) и права (`Roles/Имя/Ext/Rights.xml`). UUID генерируется автоматически.
 
 ## Использование
 
 ```
-/role-compile <RoleName> <RolesDir>
+/role-compile <JsonPath> <RolesDir>
 ```
 
-- **RoleName** — программное имя роли
-- **RolesDir** — каталог `Roles/` в исходниках конфигурации
+## Параметры
 
-## Файловая структура и регистрация
+| Параметр | Обязательный | Описание |
+|----------|:------------:|----------|
+| JsonPath | да | Путь к JSON-определению роли |
+| RolesDir | да | Каталог `Roles/` в исходниках конфигурации |
+
+## Команда
+
+```powershell
+powershell.exe -NoProfile -File .claude\skills\role-compile\scripts\role-compile.ps1 -JsonPath "<json>" -OutputDir "<RolesDir>"
+```
+
+## Выходные файлы
 
 ```
-Roles/
-  ИмяРоли.xml           ← метаданные (uuid, имя, синоним)
+RolesDir/
+  ИмяРоли.xml              ← метаданные (uuid, имя, синоним)
   ИмяРоли/
     Ext/
-      Rights.xml         ← определение прав
+      Rights.xml            ← определение прав
 ```
 
-В `Configuration.xml` добавить `<Role>ИмяРоли</Role>` в секцию `<ChildObjects>`.
+После генерации: добавить `<Role>ИмяРоли</Role>` в `<ChildObjects>` файла `Configuration.xml`.
 
-## Шаблон метаданных: Roles/ИмяРоли.xml
+## JSON DSL — справка
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<MetaDataObject xmlns="http://v8.1c.ru/8.3/MDClasses"
-        xmlns:v8="http://v8.1c.ru/8.1/data/core"
-        xmlns:xr="http://v8.1c.ru/8.3/xcf/readable"
-        xmlns:xs="http://www.w3.org/2001/XMLSchema"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        version="2.17">
-    <Role uuid="GENERATE-UUID-HERE">
-        <Properties>
-            <Name>ИмяРоли</Name>
-            <Synonym>
-                <v8:item>
-                    <v8:lang>ru</v8:lang>
-                    <v8:content>Отображаемое имя роли</v8:content>
-                </v8:item>
-            </Synonym>
-            <Comment/>
-        </Properties>
-    </Role>
-</MetaDataObject>
+### Структура верхнего уровня
+
+```json
+{
+  "name": "ИмяРоли",
+  "synonym": "Отображаемое имя роли",
+  "comment": "",
+  "setForNewObjects": false,
+  "setForAttributesByDefault": true,
+  "independentRightsOfChildObjects": false,
+  "objects": [ ... ],
+  "templates": [ ... ]
+}
 ```
 
-**UUID:** `powershell.exe -Command "[guid]::NewGuid().ToString()"`
+- `name` — программное имя роли (обязательно)
+- `synonym` — отображаемое имя (по умолчанию = name)
+- `comment` — комментарий (по умолчанию пусто)
+- Глобальные флаги — по умолчанию `false`, `true`, `false`
 
-## Шаблон прав: Roles/ИмяРоли/Ext/Rights.xml
+### Объекты: два формата
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<Rights xmlns="http://v8.1c.ru/8.2/roles"
-        xmlns:xs="http://www.w3.org/2001/XMLSchema"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:type="Rights" version="2.17">
-    <setForNewObjects>false</setForNewObjects>
-    <setForAttributesByDefault>true</setForAttributesByDefault>
-    <independentRightsOfChildObjects>false</independentRightsOfChildObjects>
-    <!-- блоки <object> -->
-</Rights>
-```
+Массив `objects` принимает строки (shorthand) и объекты (полная форма).
 
-NB: namespace `http://v8.1c.ru/8.2/roles` (исторически 8.2, не 8.3).
-
-## Формат блока прав
-
-```xml
-<object>
-    <name>Catalog.Номенклатура</name>
-    <right><name>Read</name><value>true</value></right>
-    <right><name>View</name><value>true</value></right>
-</object>
-```
-
-Имя объекта — dot-нотация: `ТипОбъекта.Имя[.ТипВложенного.ИмяВложенного]`.
-
-## Практические наборы прав
-
-### Catalog / ExchangePlan
-
-| Набор | Права |
-|-------|-------|
-| Чтение | Read, View, InputByString |
-| Полные | Read, Insert, Update, Delete, View, Edit, InputByString, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark |
-
-### Document
-
-| Набор | Права |
-|-------|-------|
-| Чтение | Read, View, InputByString |
-| Полные | Read, Insert, Update, Delete, View, Edit, InputByString, Posting, UndoPosting, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractivePosting, InteractivePostingRegular, InteractiveUndoPosting, InteractiveChangeOfPosted |
-
-### InformationRegister / AccumulationRegister / AccountingRegister
-
-| Набор | Права |
-|-------|-------|
-| Чтение | Read, View |
-| Полные | Read, Update, View, Edit |
-
-TotalsControl — только для управления итогами, обычно не нужно.
-
-### Простые типы
-
-| Тип | Права |
-|-----|-------|
-| `DataProcessor` / `Report` | Use, View |
-| `Constant` | Read, Update, View, Edit (чтение: Read, View) |
-| `CommonForm` / `CommonCommand` / `Subsystem` / `FilterCriterion` | View |
-| `DocumentJournal` | Read, View |
-| `Sequence` | Read, Update |
-| `SessionParameter` | Get (+ Set если пишет) |
-| `CommonAttribute` | View (+ Edit если редактирует) |
-| `WebService` / `HTTPService` / `IntegrationService` | Use |
-| `CalculationRegister` | Read, View |
-
-### Редкие ссылочные типы
-
-| Тип | Особенности (относительно Catalog) |
-|-----|-------|
-| `ChartOfAccounts`, `ChartOfCharacteristicTypes`, `ChartOfCalculationTypes` | + Predefined-права (InteractiveDeletePredefinedData и др.) |
-| `BusinessProcess` | + Start, InteractiveStart, InteractiveActivate |
-| `Task` | + Execute, InteractiveExecute, InteractiveActivate |
-
-### Типы БЕЗ прав в ролях
-
-Enum, FunctionalOption, DefinedType, CommonModule, CommonPicture, CommonTemplate — не фигурируют в Rights.xml.
-
-### Вложенные объекты (права: View, Edit)
+#### Строковый shorthand
 
 ```
-Catalog.Контрагенты.Attribute.ИНН
-Document.Реализация.StandardAttribute.Posted
-Document.Реализация.TabularSection.Товары
-InformationRegister.Цены.Dimension.Номенклатура
-InformationRegister.Цены.Resource.Цена
-Catalog.Контрагенты.Command.ОткрытьКарточку          ← только View
-Task.Задача.AddressingAttribute.Исполнитель
+"ОбъектМетаданных: @пресет"
+"ОбъектМетаданных: Право1, Право2"
 ```
 
-Используются для точечного запрета: `<value>false</value>` на конкретный реквизит.
-
-### Configuration
-
-Объект: `Configuration.ИмяКонфигурации`. Ключевые права: Administration, DataAdministration, ThinClient, WebClient, ThickClient, MobileClient, ExternalConnection, Output, SaveUserData, InteractiveOpenExtDataProcessors, InteractiveOpenExtReports, MainWindowModeNormal, MainWindowModeWorkplace, MainWindowModeEmbeddedWorkplace, MainWindowModeFullscreenWorkplace, MainWindowModeKiosk, AnalyticsSystemClient.
-
-> DataHistory-права (ReadDataHistory, UpdateDataHistory и др.) существуют у Catalog, Document, Register, Constant — но используются крайне редко, в типовых ролях практически не встречаются.
-
-## RLS (ограничения на уровне записей)
-
-Внутрь `<right>`, после `<value>`. Применяется к Read, Update, Insert, Delete.
-
-```xml
-<right>
-    <name>Read</name>
-    <value>true</value>
-    <restrictionByCondition>
-        <condition>#ИмяШаблона("Параметр1", "Параметр2")</condition>
-    </restrictionByCondition>
-</right>
+Примеры:
+```json
+"objects": [
+  "Catalog.Номенклатура: @view",
+  "Document.Реализация: @edit",
+  "InformationRegister.Цены: Read, Update",
+  "DataProcessor.Загрузка: @use"
+]
 ```
 
-Шаблоны — в конце Rights.xml, после всех `<object>`:
+#### Объектная форма (для RLS и переопределений)
 
-```xml
-<restrictionTemplate>
-    <name>ИмяШаблона(Параметр1, Параметр2)</name>
-    <condition>Текст шаблона</condition>
-</restrictionTemplate>
+```json
+{
+  "name": "Document.Реализация",
+  "preset": "view",
+  "rights": { "Delete": false },
+  "rls": { "Read": "#ДляОбъекта(\"\")" }
+}
 ```
 
-`&` в условии → `&amp;`. Типичные шаблоны: ДляОбъекта, ПоЗначениям, ДляРегистра.
+- `preset` — базовый набор прав (`"view"`, `"edit"`, `"use"`)
+- `rights` — переопределения: dict `{"Right": true/false}` или массив `["Right1", "Right2"]`
+- `rls` — RLS-ограничения: `{"ИмяПрава": "текст условия"}`
 
-## Пример: роль для регламентного задания
+### Пресеты (`@view`, `@edit`, `@use`)
 
-```xml
-<object>
-    <name>Catalog.Валюты</name>
-    <right><name>Read</name><value>true</value></right>
-</object>
-<object>
-    <name>InformationRegister.КурсыВалют</name>
-    <right><name>Read</name><value>true</value></right>
-    <right><name>Update</name><value>true</value></right>
-</object>
-<object>
-    <name>Constant.ОсновнаяВалюта</name>
-    <right><name>Read</name><value>true</value></right>
-</object>
+Пресеты обозначаются `@` в строковом формате. В объектной форме ключ `preset` без `@`.
+
+#### `@view` — просмотр
+
+| Тип объекта | Права |
+|-------------|-------|
+| Catalog, ExchangePlan, Document, ChartOfAccounts, ChartOfCharacteristicTypes, ChartOfCalculationTypes, BusinessProcess, Task | Read, View, InputByString |
+| InformationRegister, AccumulationRegister, AccountingRegister, CalculationRegister, Constant, DocumentJournal | Read, View |
+| Sequence | Read |
+| CommonForm, CommonCommand, Subsystem, FilterCriterion, CommonAttribute | View |
+| SessionParameter | Get |
+| Configuration | ThinClient, WebClient, Output, SaveUserData, MainWindowModeNormal |
+
+#### `@edit` — полное редактирование
+
+| Тип объекта | Права |
+|-------------|-------|
+| Catalog, ExchangePlan, ChartOfAccounts, ChartOfCharacteristicTypes, ChartOfCalculationTypes | Read, Insert, Update, Delete, View, Edit, InputByString, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark |
+| Document | Read, Insert, Update, Delete, View, Edit, InputByString, Posting, UndoPosting, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractivePosting, InteractivePostingRegular, InteractiveUndoPosting, InteractiveChangeOfPosted |
+| BusinessProcess | Read, Insert, Update, Delete, View, Edit, InputByString, Start, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractiveActivate, InteractiveStart |
+| Task | Read, Insert, Update, Delete, View, Edit, InputByString, Execute, InteractiveInsert, InteractiveSetDeletionMark, InteractiveClearDeletionMark, InteractiveActivate, InteractiveExecute |
+| InformationRegister, AccumulationRegister, AccountingRegister, Constant | Read, Update, View, Edit |
+| DocumentJournal | Read, View |
+| Sequence | Read, Update |
+| SessionParameter | Get, Set |
+| CommonAttribute | View, Edit |
+
+#### `@use` — использование
+
+| Тип объекта | Права |
+|-------------|-------|
+| DataProcessor, Report | Use, View |
+| CommonForm, CommonCommand, Subsystem | View |
+| WebService, HTTPService, IntegrationService | Use |
+
+Если пресет не определён для типа объекта — предупреждение с подсказкой доступных.
+
+### Русские синонимы
+
+Скрипт автоматически транслирует русские имена в английские. Можно смешивать: `"Справочник.Контрагенты: Чтение, View"` — работает.
+
+**Типы объектов:**
+
+| Русский | English |
+|---------|---------|
+| `Справочник` | Catalog |
+| `Документ` | Document |
+| `РегистрСведений` | InformationRegister |
+| `РегистрНакопления` | AccumulationRegister |
+| `РегистрБухгалтерии` | AccountingRegister |
+| `РегистрРасчета` | CalculationRegister |
+| `Константа` | Constant |
+| `ПланСчетов` | ChartOfAccounts |
+| `ПланВидовХарактеристик` | ChartOfCharacteristicTypes |
+| `ПланВидовРасчета` | ChartOfCalculationTypes |
+| `ПланОбмена` | ExchangePlan |
+| `БизнесПроцесс` | BusinessProcess |
+| `Задача` | Task |
+| `Обработка` | DataProcessor |
+| `Отчет` | Report |
+| `ОбщаяФорма` | CommonForm |
+| `ОбщаяКоманда` | CommonCommand |
+| `Подсистема` | Subsystem |
+| `КритерийОтбора` | FilterCriterion |
+| `ЖурналДокументов` | DocumentJournal |
+| `Последовательность` | Sequence |
+| `ВебСервис` | WebService |
+| `HTTPСервис` | HTTPService |
+| `СервисИнтеграции` | IntegrationService |
+| `ПараметрСеанса` | SessionParameter |
+| `ОбщийРеквизит` | CommonAttribute |
+| `Конфигурация` | Configuration |
+| `Перечисление` | Enum |
+
+Вложенные типы: `Реквизит` → Attribute, `СтандартныйРеквизит` → StandardAttribute, `ТабличнаяЧасть` → TabularSection, `Измерение` → Dimension, `Ресурс` → Resource, `Команда` → Command, `РеквизитАдресации` → AddressingAttribute.
+
+**Права (основные):**
+
+| Русский | English |
+|---------|---------|
+| `Чтение` | Read |
+| `Добавление` | Insert |
+| `Изменение` | Update |
+| `Удаление` | Delete |
+| `Просмотр` | View |
+| `Редактирование` | Edit |
+| `ВводПоСтроке` | InputByString |
+| `Проведение` | Posting |
+| `ОтменаПроведения` | UndoPosting |
+| `Использование` | Use |
+| `Получение` | Get |
+| `Установка` | Set |
+| `Старт` | Start |
+| `Выполнение` | Execute |
+| `УправлениеИтогами` | TotalsControl |
+
+**Права (интерактивные):**
+
+| Русский | English |
+|---------|---------|
+| `ИнтерактивноеДобавление` | InteractiveInsert |
+| `ИнтерактивнаяПометкаУдаления` | InteractiveSetDeletionMark |
+| `ИнтерактивноеСнятиеПометкиУдаления` | InteractiveClearDeletionMark |
+| `ИнтерактивноеУдаление` | InteractiveDelete |
+| `ИнтерактивноеУдалениеПомеченных` | InteractiveDeleteMarked |
+| `ИнтерактивноеПроведение` | InteractivePosting |
+| `ИнтерактивноеПроведениеНеоперативное` | InteractivePostingRegular |
+| `ИнтерактивнаяОтменаПроведения` | InteractiveUndoPosting |
+| `ИнтерактивноеИзменениеПроведенных` | InteractiveChangeOfPosted |
+| `ИнтерактивныйСтарт` | InteractiveStart |
+| `ИнтерактивнаяАктивация` | InteractiveActivate |
+| `ИнтерактивноеВыполнение` | InteractiveExecute |
+
+**Права (конфигурация):**
+
+| Русский | English |
+|---------|---------|
+| `Администрирование` | Administration |
+| `АдминистрированиеДанных` | DataAdministration |
+| `ТонкийКлиент` | ThinClient |
+| `ТолстыйКлиент` | ThickClient |
+| `ВебКлиент` | WebClient |
+| `МобильныйКлиент` | MobileClient |
+| `ВнешнееСоединение` | ExternalConnection |
+| `Вывод` | Output |
+| `СохранениеДанныхПользователя` | SaveUserData |
+
+### Шаблоны ограничений (RLS templates)
+
+```json
+"templates": [
+  {
+    "name": "ДляОбъекта(Модификатор)",
+    "condition": "// текст шаблона\nГДЕ 1=1\n&Модификатор"
+  }
+]
 ```
 
-Фоновые задания не требуют Interactive/View/Edit-прав и прав конфигурации (ThinClient, WebClient и др.) — только программные (Read, Insert, Update, Delete, Posting).
+`&` в условии автоматически экранируется в `&amp;` в XML.
+
+## Примеры
+
+### Простая роль (только пресеты)
+
+```json
+{
+  "name": "ЧтениеНоменклатуры",
+  "synonym": "Чтение номенклатуры",
+  "objects": [
+    "Catalog.Номенклатура: @view",
+    "Catalog.Контрагенты: @view",
+    "DataProcessor.Загрузка: @use"
+  ]
+}
+```
+
+### Роль для регламентного задания
+
+```json
+{
+  "name": "ОбновлениеЦен",
+  "synonym": "Обновление цен номенклатуры",
+  "objects": [
+    "Catalog.Номенклатура: Read",
+    "Catalog.Валюты: Read",
+    "InformationRegister.ЦеныНоменклатуры: Read, Update",
+    "Constant.ОсновнаяВалюта: Read"
+  ]
+}
+```
+
+### Роль с RLS
+
+```json
+{
+  "name": "ЧтениеДокументовПоОрганизации",
+  "synonym": "Чтение документов (ограничение по организации)",
+  "objects": [
+    "Catalog.Организации: @view",
+    {
+      "name": "Document.РеализацияТоваровУслуг",
+      "preset": "view",
+      "rls": {
+        "Read": "#ДляОбъекта(\"\")"
+      }
+    }
+  ],
+  "templates": [
+    {
+      "name": "ДляОбъекта(Модификатор)",
+      "condition": "ГДЕ Организация = &ТекущаяОрганизация"
+    }
+  ]
+}
+```
+
+### Роль с русскими синонимами
+
+```json
+{
+  "name": "ПросмотрДанных",
+  "synonym": "Просмотр данных",
+  "objects": [
+    "Справочник.Контрагенты: @view",
+    "Документ.Реализация: Чтение, Просмотр",
+    "РегистрСведений.Цены: @edit",
+    "Обработка.ЗагрузкаДанных: @use"
+  ]
+}
+```
+
+### Роль с переопределением прав из пресета
+
+```json
+{
+  "name": "ОграниченноеРедактирование",
+  "synonym": "Редактирование без удаления",
+  "objects": [
+    {
+      "name": "Catalog.Контрагенты",
+      "preset": "edit",
+      "rights": { "Delete": false }
+    }
+  ]
+}
+```
+
+## Верификация
+
+```
+/role-validate <RightsPath> [MetadataPath]  — проверка корректности XML, прав, RLS
+/role-info <RightsPath>                     — визуальная сводка структуры
+```
