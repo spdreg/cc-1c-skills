@@ -1,7 +1,7 @@
 ﻿param(
 	[Parameter(Mandatory=$true)]
 	[string]$TemplatePath,
-	[ValidateSet("overview", "query", "fields", "links", "calculated", "resources", "params", "variant", "trace")]
+	[ValidateSet("overview", "query", "fields", "links", "calculated", "resources", "params", "variant", "trace", "templates")]
 	[string]$Mode = "overview",
 	[string]$Name,
 	[int]$Batch = 0,
@@ -44,6 +44,7 @@ $ns.AddNamespace("v8", "http://v8.1c.ru/8.1/data/core")
 $ns.AddNamespace("v8ui", "http://v8.1c.ru/8.1/data/ui")
 $ns.AddNamespace("xs", "http://www.w3.org/2001/XMLSchema")
 $ns.AddNamespace("xsi", "http://www.w3.org/2001/XMLSchema-instance")
+$ns.AddNamespace("dcsat", "http://v8.1c.ru/8.1/data-composition-system/area-template")
 
 $root = $xmlDoc.DocumentElement
 
@@ -391,14 +392,19 @@ if ($Mode -eq "overview") {
 		}
 	}
 
-	# Templates — count only
-	$templates = $root.SelectNodes("s:template", $ns)
-	$groupTemplates = $root.SelectNodes("s:groupTemplate", $ns)
-	if ($templates.Count -gt 0 -or $groupTemplates.Count -gt 0) {
+	# Templates — count with binding types
+	$tplDefs = $root.SelectNodes("s:template", $ns)
+	$fieldTpls = $root.SelectNodes("s:fieldTemplate", $ns)
+	$groupTpls = $root.SelectNodes("s:groupTemplate", $ns)
+	$groupHeaderTpls = $root.SelectNodes("s:groupHeaderTemplate", $ns)
+	$groupFooterTpls = $root.SelectNodes("s:groupFooterTemplate", $ns)
+	$totalBindings = $fieldTpls.Count + $groupTpls.Count + $groupHeaderTpls.Count + $groupFooterTpls.Count
+	if ($tplDefs.Count -gt 0) {
 		$parts = @()
-		if ($templates.Count -gt 0) { $parts += "$($templates.Count) templates" }
-		if ($groupTemplates.Count -gt 0) { $parts += "$($groupTemplates.Count) group bindings" }
-		$lines.Add("Templates: " + ($parts -join ", "))
+		if ($fieldTpls.Count -gt 0) { $parts += "$($fieldTpls.Count) field" }
+		$grpCount = $groupTpls.Count + $groupHeaderTpls.Count + $groupFooterTpls.Count
+		if ($grpCount -gt 0) { $parts += "$grpCount group" }
+		$lines.Add("Templates: $($tplDefs.Count) defined ($($parts -join ', ') bindings)")
 	}
 
 	# Parameters — split visible/hidden
@@ -518,6 +524,9 @@ if ($Mode -eq "overview") {
 		$hints += "-Mode variant           variant structure"
 	} elseif ($variants.Count -gt 1) {
 		$hints += "-Mode variant -Name <N> variant structure (1..$($variants.Count))"
+	}
+	if ($tplDefs.Count -gt 0) {
+		$hints += "-Mode templates         template bindings and expressions"
 	}
 	$hints += "-Mode trace -Name <f>   trace field origin (by name or title)"
 	$lines.Add("Next:")
@@ -1452,6 +1461,299 @@ elseif ($Mode -eq "trace") {
 		if ($dsFields.ContainsKey($targetPath)) {
 			$lines.Add("")
 			$lines.Add("(direct dataset field, no calculated expression or resource)")
+		}
+	}
+}
+
+# ============================================================
+# MODE: templates
+# ============================================================
+elseif ($Mode -eq "templates") {
+
+	# --- Helper: check if expression is trivial ---
+	function Is-TrivialExpr([string]$paramName, [string]$expr) {
+		$e = $expr.Trim()
+		$n = $paramName.Trim()
+		if ($e -eq $n) { return $true }
+		if ($e -eq "Представление($n)") { return $true }
+		return $false
+	}
+
+	# --- Helper: parse template content (rows/cells) ---
+	function Get-TemplateContent([System.Xml.XmlNode]$tplNode) {
+		$innerT = $tplNode.SelectSingleNode("s:template", $ns)
+		if (-not $innerT) { return @{ rows = 0; cells = @(); params = @(); nonTrivial = @() } }
+
+		$rows = $innerT.SelectNodes("dcsat:item", $ns)
+		$rowCount = $rows.Count
+		$cellData = [System.Collections.ArrayList]::new()
+		$rowIdx = 0
+		foreach ($row in $rows) {
+			$rowIdx++
+			$rowCells = [System.Collections.ArrayList]::new()
+			foreach ($cell in $row.SelectNodes("dcsat:tableCell", $ns)) {
+				$field = $cell.SelectSingleNode("dcsat:item", $ns)
+				if (-not $field) {
+					[void]$rowCells.Add("(empty)")
+					continue
+				}
+				$val = $field.SelectSingleNode("dcsat:value", $ns)
+				if (-not $val) {
+					[void]$rowCells.Add("(empty)")
+					continue
+				}
+				$xsiType = $val.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance")
+				if ($xsiType -like "*LocalStringType*") {
+					$text = Get-MLText $val
+					if ($text) { [void]$rowCells.Add("`"$text`"") }
+					else { [void]$rowCells.Add("(empty)") }
+				} elseif ($xsiType -like "*Parameter*") {
+					[void]$rowCells.Add("{$($val.InnerText)}")
+				} else {
+					[void]$rowCells.Add("(?)")
+				}
+			}
+			[void]$cellData.Add(@{ row = $rowIdx; cells = $rowCells.ToArray() })
+		}
+
+		# Parameters
+		$paramNodes = $tplNode.SelectNodes("s:parameter", $ns)
+		$paramList = [System.Collections.ArrayList]::new()
+		$nonTrivialList = [System.Collections.ArrayList]::new()
+		foreach ($p in $paramNodes) {
+			$pn = $p.SelectSingleNode("dcsat:name", $ns)
+			$pe = $p.SelectSingleNode("dcsat:expression", $ns)
+			if ($pn -and $pe) {
+				$pName = $pn.InnerText
+				$pExpr = $pe.InnerText
+				[void]$paramList.Add(@{ name = $pName; expression = $pExpr })
+				if (-not (Is-TrivialExpr $pName $pExpr)) {
+					[void]$nonTrivialList.Add(@{ name = $pName; expression = $pExpr })
+				}
+			}
+		}
+
+		return @{
+			rows = $rowCount
+			cells = $cellData.ToArray()
+			params = $paramList.ToArray()
+			nonTrivial = $nonTrivialList.ToArray()
+		}
+	}
+
+	# --- Build template name -> node index ---
+	$tplIndex = @{}
+	foreach ($t in $root.SelectNodes("s:template", $ns)) {
+		$tn = $t.SelectSingleNode("s:name", $ns)
+		if ($tn) { $tplIndex[$tn.InnerText] = $t }
+	}
+
+	# --- Parse bindings ---
+	# Group bindings: groupTemplate + groupHeaderTemplate
+	$groupBindings = [ordered]@{}  # groupName -> @{ bindings = @(@{type; tplName; tplNode}) }
+
+	foreach ($gt in $root.SelectNodes("s:groupTemplate", $ns)) {
+		$gn = $gt.SelectSingleNode("s:groupName", $ns)
+		$gf = $gt.SelectSingleNode("s:groupField", $ns)
+		$gnStr = if ($gn) { $gn.InnerText } elseif ($gf) { $gf.InnerText } else { "(default)" }
+		$tt = $gt.SelectSingleNode("s:templateType", $ns)
+		$tn = $gt.SelectSingleNode("s:template", $ns)
+		$ttStr = if ($tt) { $tt.InnerText } else { "-" }
+		$tnStr = if ($tn) { $tn.InnerText } else { "-" }
+
+		if (-not $groupBindings.Contains($gnStr)) {
+			$groupBindings[$gnStr] = [System.Collections.ArrayList]::new()
+		}
+		[void]$groupBindings[$gnStr].Add(@{ type = $ttStr; tplName = $tnStr })
+	}
+
+	foreach ($ght in $root.SelectNodes("s:groupHeaderTemplate", $ns)) {
+		$gn = $ght.SelectSingleNode("s:groupName", $ns)
+		$gf = $ght.SelectSingleNode("s:groupField", $ns)
+		$gnStr = if ($gn) { $gn.InnerText } elseif ($gf) { $gf.InnerText } else { "(default)" }
+		$tt = $ght.SelectSingleNode("s:templateType", $ns)
+		$tn = $ght.SelectSingleNode("s:template", $ns)
+		$ttStr = if ($tt) { "GroupHeader" } else { "GroupHeader" }
+		$tnStr = if ($tn) { $tn.InnerText } else { "-" }
+
+		if (-not $groupBindings.Contains($gnStr)) {
+			$groupBindings[$gnStr] = [System.Collections.ArrayList]::new()
+		}
+		[void]$groupBindings[$gnStr].Add(@{ type = $ttStr; tplName = $tnStr })
+	}
+
+	foreach ($gft in $root.SelectNodes("s:groupFooterTemplate", $ns)) {
+		$gn = $gft.SelectSingleNode("s:groupName", $ns)
+		$gf = $gft.SelectSingleNode("s:groupField", $ns)
+		$gnStr = if ($gn) { $gn.InnerText } elseif ($gf) { $gf.InnerText } else { "(default)" }
+		$tn = $gft.SelectSingleNode("s:template", $ns)
+		$tnStr = if ($tn) { $tn.InnerText } else { "-" }
+
+		if (-not $groupBindings.Contains($gnStr)) {
+			$groupBindings[$gnStr] = [System.Collections.ArrayList]::new()
+		}
+		[void]$groupBindings[$gnStr].Add(@{ type = "GroupFooter"; tplName = $tnStr })
+	}
+
+	# Field bindings: fieldTemplate
+	$fieldBindings = [ordered]@{}  # fieldName -> tplName
+	$fieldNonTrivial = [System.Collections.ArrayList]::new()
+
+	foreach ($ft in $root.SelectNodes("s:fieldTemplate", $ns)) {
+		$fn = $ft.SelectSingleNode("s:field", $ns)
+		$tn = $ft.SelectSingleNode("s:template", $ns)
+		if ($fn -and $tn) {
+			$fName = $fn.InnerText
+			$tName = $tn.InnerText
+			$fieldBindings[$fName] = $tName
+			# Check params for non-trivial expressions
+			if ($tplIndex.ContainsKey($tName)) {
+				$content = Get-TemplateContent $tplIndex[$tName]
+				foreach ($nt in $content.nonTrivial) {
+					[void]$fieldNonTrivial.Add(@{ field = $fName; template = $tName; name = $nt.name; expression = $nt.expression })
+				}
+			}
+		}
+	}
+
+	$totalTpl = $tplIndex.Count
+	$fieldCount = $fieldBindings.Count
+	$groupBindCount = 0
+	foreach ($k in $groupBindings.Keys) { $groupBindCount += $groupBindings[$k].Count }
+
+	if (-not $Name) {
+		# --- MAP mode ---
+		$lines.Add("=== Templates ($totalTpl defined: $fieldCount field, $groupBindCount group) ===")
+
+		# Field bindings
+		if ($fieldBindings.Count -gt 0) {
+			$lines.Add("")
+			if ($fieldNonTrivial.Count -eq 0) {
+				$fieldNames = @($fieldBindings.Keys)
+				if ($fieldNames.Count -le 8) {
+					$lines.Add("Field bindings ($fieldCount): $($fieldNames -join ', ')  (all trivial)")
+				} else {
+					$lines.Add("Field bindings ($fieldCount): (all trivial)")
+					$lines.Add("  $($fieldNames[0..7] -join ', '), ...")
+				}
+			} else {
+				$trivialCount = $fieldBindings.Count - ($fieldNonTrivial | Select-Object -ExpandProperty field -Unique).Count
+				$lines.Add("Field bindings ($fieldCount, $trivialCount trivial):")
+				foreach ($nt in $fieldNonTrivial) {
+					$lines.Add("  $($nt.field): $($nt.name) = $($nt.expression)")
+				}
+			}
+		}
+
+		# Group bindings
+		if ($groupBindings.Count -gt 0) {
+			$lines.Add("")
+			$lines.Add("Group bindings ($groupBindCount):")
+			foreach ($gName in $groupBindings.Keys) {
+				$bindings = $groupBindings[$gName]
+				$parts = @()
+				foreach ($b in $bindings) {
+					$info = "$($b.type) -> $($b.tplName)"
+					if ($tplIndex.ContainsKey($b.tplName)) {
+						$content = Get-TemplateContent $tplIndex[$b.tplName]
+						# Check if any cell has content
+						$hasContent = $false
+						foreach ($r in $content.cells) {
+							foreach ($c in $r.cells) {
+								if ($c -ne "(empty)") { $hasContent = $true; break }
+							}
+							if ($hasContent) { break }
+						}
+						$info += " ($($content.rows) rows"
+						if ($content.params.Count -gt 0) { $info += ", $($content.params.Count) params" }
+						$info += ")"
+						if (-not $hasContent -and $content.params.Count -eq 0) {
+							$info += " spacer"
+						}
+						if ($content.nonTrivial.Count -gt 0) {
+							$ntNames = ($content.nonTrivial | ForEach-Object { $_.name }) -join ', '
+							$info += " *$ntNames"
+						}
+					}
+					$parts += $info
+				}
+				$lines.Add("  $gName")
+				foreach ($p in $parts) {
+					$lines.Add("    $p")
+				}
+			}
+		}
+
+		if ($fieldBindings.Count -gt 0 -or $groupBindings.Count -gt 0) {
+			$lines.Add("")
+			$lines.Add("Use -Name <group|field> for template details.")
+		}
+	} else {
+		# --- DETAIL mode ---
+		$found = $false
+
+		# Check group bindings first
+		if ($groupBindings.Contains($Name)) {
+			$found = $true
+			$bindings = $groupBindings[$Name]
+			$lines.Add("=== Templates: $Name ===")
+			foreach ($b in $bindings) {
+				$lines.Add("")
+				$tName = $b.tplName
+				if (-not $tplIndex.ContainsKey($tName)) {
+					$lines.Add("$($b.type) -> $tName  (template not found)")
+					continue
+				}
+				$content = Get-TemplateContent $tplIndex[$tName]
+				$cellCount = 0
+				foreach ($r in $content.cells) { $cellCount += $r.cells.Count }
+				$lines.Add("$($b.type) -> $tName [$($content.rows) rows, $cellCount cells]:")
+
+				foreach ($r in $content.cells) {
+					$cellStr = $r.cells -join " | "
+					$lines.Add("  Row $($r.row): $cellStr")
+				}
+
+				if ($content.nonTrivial.Count -gt 0) {
+					$lines.Add("  Params:")
+					foreach ($nt in $content.nonTrivial) {
+						$lines.Add("    $($nt.name) = $($nt.expression)")
+					}
+				}
+			}
+		}
+
+		# Check field bindings
+		if ($fieldBindings.Contains($Name)) {
+			if ($found) { $lines.Add("") }
+			$found = $true
+			$tName = $fieldBindings[$Name]
+			$lines.Add("=== Field template: $Name -> $tName ===")
+			if ($tplIndex.ContainsKey($tName)) {
+				$content = Get-TemplateContent $tplIndex[$tName]
+				$cellCount = 0
+				foreach ($r in $content.cells) { $cellCount += $r.cells.Count }
+				$lines.Add("[$($content.rows) rows, $cellCount cells]")
+
+				foreach ($r in $content.cells) {
+					$cellStr = $r.cells -join " | "
+					$lines.Add("  Row $($r.row): $cellStr")
+				}
+
+				if ($content.nonTrivial.Count -gt 0) {
+					$lines.Add("  Non-trivial params:")
+					foreach ($nt in $content.nonTrivial) {
+						$lines.Add("    $($nt.name) = $($nt.expression)")
+					}
+				} else {
+					$lines.Add("  (all params trivial)")
+				}
+			}
+		}
+
+		if (-not $found) {
+			Write-Error "Group or field '$Name' not found in template bindings"
+			exit 1
 		}
 	}
 }
