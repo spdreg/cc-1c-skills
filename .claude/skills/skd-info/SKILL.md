@@ -1,7 +1,7 @@
 ---
 name: skd-info
 description: Анализ структуры схемы компоновки данных 1С (СКД) — наборы, поля, параметры, варианты
-argument-hint: <TemplatePath> [-Mode overview|query|fields|links|totals|params|variant|trace] [-Name <dataset|variant|field>]
+argument-hint: <TemplatePath> [-Mode overview|query|fields|links|calculated|resources|params|variant|trace] [-Name <dataset|variant|field>]
 allowed-tools:
   - Bash
   - Read
@@ -44,8 +44,10 @@ powershell.exe -NoProfile -File .claude\skills\skd-info\scripts\skd-info.ps1 -Te
 ... -Mode fields
 ... -Mode fields -Name НаборДанных1
 ... -Mode links
-... -Mode totals
-... -Mode totals -Name СуммаНалога
+... -Mode calculated
+... -Mode calculated -Name КоэффициентКи
+... -Mode resources
+... -Mode resources -Name СуммаНалога
 ... -Mode params
 ... -Mode trace -Name КоэффициентКи
 ... -Mode trace -Name "Коэффициент Ки"
@@ -73,7 +75,7 @@ Sources: ИсточникДанных1 (Local)
 Datasets:
   [Query]  НоменклатураСЦенами   7 fields, query 40 lines
 Calculated: 1
-Totals: 1
+Resources: 1
 Templates: 1 templates, 1 group bindings
 Params: (none)
 
@@ -84,7 +86,8 @@ Variants:
 Next:
   -Mode query             query text
   -Mode fields            field tables by dataset
-  -Mode totals            calculated fields + resources
+  -Mode calculated        calculated field expressions
+  -Mode resources         resource aggregation
   -Mode variant -Name <N> variant structure (1..2)
 ```
 
@@ -152,15 +155,30 @@ Params: 18 (7 visible, 11 hidden): Период, Ответственный, ...
 
 Группирует по парам наборов. Показывает поля связи и параметры.
 
-### totals — вычисляемые поля и ресурсы
+### calculated — вычисляемые поля
 
-Без `-Name` — карта: имена вычисляемых полей и ресурсов:
+Без `-Name` — карта: имена и заголовки:
 ```
 === Calculated fields (23) ===
   ДоляСтоимости  "Доля стоимости"
   КоэффициентКи  "Коэффициент Ки"
   ...
+```
 
+С `-Name <поле>` — полное выражение:
+```
+=== Calculated: ДоляСтоимости ===
+
+Expression:
+  ВЫБОР КОГДА ... ТОГДА "1" ИНАЧЕ ... КОНЕЦ
+Title: Доля стоимости
+Restrict: condition
+```
+
+### resources — ресурсы (итоги по группировкам)
+
+Без `-Name` — карта: имена полей, `*` = есть формулы по группировкам:
+```
 === Resources (51) ===
   НалоговаяБаза
   КоэффициентКи *
@@ -168,18 +186,11 @@ Params: 18 (7 visible, 11 hidden): Период, Ответственный, ...
   * = has group-level formulas
 ```
 
-С `-Name <поле>` — полная формула (если поле есть и в calculated, и в resources — покажет обе части):
+С `-Name <поле>` — формулы агрегации:
 ```
-=== Calculated: КоэффициентКи ===
+=== Resource: ДатаСостояния ===
 
-Expression:
-  ВЫБОР КОГДА ... ТОГДА 0 ИНАЧЕ ... КОНЕЦ
-Title: Коэффициент Ки
-Restrict: condition
-
-=== Resource: КоэффициентКи ===
-
-  [ОсновноеСредство] Сумма(КоэффициентКи)
+  [ОсновноеСредство] ЕстьNull(ДатаСостояния, "")
 ```
 
 ### params — параметры схемы
@@ -253,7 +264,8 @@ Resource:
 - **Отладка данных**: query для просмотра текста запроса
 - **Модификация полей**: fields для списка с ролями по наборам
 - **Связи между наборами**: links для полей связи и параметров
-- **Формулы и ресурсы**: totals для вычисляемых полей и ресурсов
+- **Вычисляемые поля**: calculated для выражений вычисляемых полей
+- **Ресурсы**: resources для формул агрегации по группировкам
 - **Программный вызов**: params для списка параметров
 - **Изменение вывода**: variant для структуры группировок и фильтров
 - **Как считается колонка?**: trace для полной цепочки от заголовка до запроса

@@ -1,7 +1,7 @@
 ﻿param(
 	[Parameter(Mandatory=$true)]
 	[string]$TemplatePath,
-	[ValidateSet("overview", "query", "fields", "links", "totals", "params", "variant", "trace")]
+	[ValidateSet("overview", "query", "fields", "links", "calculated", "resources", "params", "variant", "trace")]
 	[string]$Mode = "overview",
 	[string]$Name,
 	[int]$Batch = 0,
@@ -385,9 +385,9 @@ if ($Mode -eq "overview") {
 		}
 		$groupNote = if ($hasGrouped) { ", with group formulas" } else { "" }
 		if ($uniquePaths.Count -eq $totalFields.Count) {
-			$lines.Add("Totals: $($totalFields.Count)$groupNote")
+			$lines.Add("Resources: $($totalFields.Count)$groupNote")
 		} else {
-			$lines.Add("Totals: $($totalFields.Count) ($($uniquePaths.Count) fields$groupNote)")
+			$lines.Add("Resources: $($totalFields.Count) ($($uniquePaths.Count) fields$groupNote)")
 		}
 	}
 
@@ -505,8 +505,11 @@ if ($Mode -eq "overview") {
 	}
 	$calcCount = $root.SelectNodes("s:calculatedField", $ns).Count
 	$totalCount = $root.SelectNodes("s:totalField", $ns).Count
-	if ($calcCount -gt 0 -or $totalCount -gt 0) {
-		$hints += "-Mode totals            calculated fields + resources"
+	if ($calcCount -gt 0) {
+		$hints += "-Mode calculated        calculated field expressions ($calcCount)"
+	}
+	if ($totalCount -gt 0) {
+		$hints += "-Mode resources         resource aggregation ($totalCount)"
 	}
 	if ($params.Count -gt 0) {
 		$hints += "-Mode params            parameter details"
@@ -827,18 +830,15 @@ elseif ($Mode -eq "links") {
 }
 
 # ============================================================
-# MODE: totals
+# MODE: calculated
 # ============================================================
-elseif ($Mode -eq "totals") {
+elseif ($Mode -eq "calculated") {
 
 	$calcFields = $root.SelectNodes("s:calculatedField", $ns)
-	$totalFields = $root.SelectNodes("s:totalField", $ns)
-
-	if ($Name) {
-		# Detail for specific field
+	if ($calcFields.Count -eq 0) {
+		$lines.Add("(no calculated fields)")
+	} elseif ($Name) {
 		$found = $false
-
-		# Search in calculated fields
 		foreach ($cf in $calcFields) {
 			$cfPath = $cf.SelectSingleNode("s:dataPath", $ns).InnerText
 			if ($cfPath -eq $Name) {
@@ -870,74 +870,75 @@ elseif ($Mode -eq "totals") {
 				break
 			}
 		}
-
-		# Search in resources (also show if already found in calculated — field can be both)
-		$matchedResources = @()
-		foreach ($tf in $totalFields) {
-			$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
-			if ($tfPath -eq $Name) { $matchedResources += $tf }
-		}
-		if ($matchedResources.Count -gt 0) {
-			if ($found) { $lines.Add("") }
-			$lines.Add("=== Resource: $Name ===")
-			$lines.Add("")
-			foreach ($tf in $matchedResources) {
-				$tfExpr = $tf.SelectSingleNode("s:expression", $ns).InnerText
-				$tfGroup = $tf.SelectSingleNode("s:group", $ns)
-				$groupStr = "(overall)"
-				if ($tfGroup) { $groupStr = $tfGroup.InnerText }
-				$lines.Add("  [$groupStr] $tfExpr")
-			}
-			$found = $true
-		}
-
 		if (-not $found) {
-			Write-Error "Field '$Name' not found in calculated fields or resources"
+			Write-Error "Calculated field '$Name' not found"
 			exit 1
 		}
 	} else {
-		# Compact map
-		if ($calcFields.Count -gt 0) {
-			$lines.Add("=== Calculated fields ($($calcFields.Count)) ===")
-			foreach ($cf in $calcFields) {
-				$cfPath = $cf.SelectSingleNode("s:dataPath", $ns).InnerText
-				$cfTitle = $cf.SelectSingleNode("s:title", $ns)
-				$titleStr = ""
-				if ($cfTitle) {
-					$t = Get-MLText $cfTitle
-					if ($t -and $t -ne $cfPath) { $titleStr = "  `"$t`"" }
-				}
-				$lines.Add("  $cfPath$titleStr")
+		# Map
+		$lines.Add("=== Calculated fields ($($calcFields.Count)) ===")
+		foreach ($cf in $calcFields) {
+			$cfPath = $cf.SelectSingleNode("s:dataPath", $ns).InnerText
+			$cfTitle = $cf.SelectSingleNode("s:title", $ns)
+			$titleStr = ""
+			if ($cfTitle) {
+				$t = Get-MLText $cfTitle
+				if ($t -and $t -ne $cfPath) { $titleStr = "  `"$t`"" }
 			}
-			$lines.Add("")
+			$lines.Add("  $cfPath$titleStr")
 		}
+		$lines.Add("")
+		$lines.Add("Use -Name <field> for full expression.")
+	}
+}
 
-		if ($totalFields.Count -gt 0) {
-			$lines.Add("=== Resources ($($totalFields.Count)) ===")
-			# Collect unique field names with group info
-			$resMap = [ordered]@{}
-			foreach ($tf in $totalFields) {
-				$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
-				$tfGroup = $tf.SelectSingleNode("s:group", $ns)
-				if (-not $resMap.Contains($tfPath)) {
-					$resMap[$tfPath] = @{ hasGroup = $false }
-				}
-				if ($tfGroup) { $resMap[$tfPath].hasGroup = $true }
-			}
-			foreach ($key in $resMap.Keys) {
-				$groupMark = if ($resMap[$key].hasGroup) { " *" } else { "" }
-				$lines.Add("  $key$groupMark")
-			}
-			$lines.Add("")
-			$lines.Add("  * = has group-level formulas")
-		}
+# ============================================================
+# MODE: resources
+# ============================================================
+elseif ($Mode -eq "resources") {
 
-		if ($calcFields.Count -eq 0 -and $totalFields.Count -eq 0) {
-			$lines.Add("(no calculated fields or resources)")
-		} else {
-			$lines.Add("")
-			$lines.Add("Use -Name <field> for full expression.")
+	$totalFields = $root.SelectNodes("s:totalField", $ns)
+	if ($totalFields.Count -eq 0) {
+		$lines.Add("(no resources)")
+	} elseif ($Name) {
+		$matched = @()
+		foreach ($tf in $totalFields) {
+			$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
+			if ($tfPath -eq $Name) { $matched += $tf }
 		}
+		if ($matched.Count -eq 0) {
+			Write-Error "Resource '$Name' not found"
+			exit 1
+		}
+		$lines.Add("=== Resource: $Name ===")
+		$lines.Add("")
+		foreach ($tf in $matched) {
+			$tfExpr = $tf.SelectSingleNode("s:expression", $ns).InnerText
+			$tfGroup = $tf.SelectSingleNode("s:group", $ns)
+			$groupStr = "(overall)"
+			if ($tfGroup) { $groupStr = $tfGroup.InnerText }
+			$lines.Add("  [$groupStr] $tfExpr")
+		}
+	} else {
+		# Map
+		$lines.Add("=== Resources ($($totalFields.Count)) ===")
+		$resMap = [ordered]@{}
+		foreach ($tf in $totalFields) {
+			$tfPath = $tf.SelectSingleNode("s:dataPath", $ns).InnerText
+			$tfGroup = $tf.SelectSingleNode("s:group", $ns)
+			if (-not $resMap.Contains($tfPath)) {
+				$resMap[$tfPath] = @{ hasGroup = $false }
+			}
+			if ($tfGroup) { $resMap[$tfPath].hasGroup = $true }
+		}
+		foreach ($key in $resMap.Keys) {
+			$groupMark = if ($resMap[$key].hasGroup) { " *" } else { "" }
+			$lines.Add("  $key$groupMark")
+		}
+		$lines.Add("")
+		$lines.Add("  * = has group-level formulas")
+		$lines.Add("")
+		$lines.Add("Use -Name <field> for full formula.")
 	}
 }
 
