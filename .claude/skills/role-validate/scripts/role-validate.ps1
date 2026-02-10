@@ -401,7 +401,55 @@ if ($MetadataPath) {
 	}
 }
 
-# --- 5. Summary ---
+# --- 5. Check registration in Configuration.xml ---
+
+# Infer paths: RightsPath = .../Roles/Name/Ext/Rights.xml
+$extDir2 = Split-Path (Resolve-Path $RightsPath).Path -Parent
+$roleDir2 = Split-Path $extDir2 -Parent
+$rolesDir2 = Split-Path $roleDir2 -Parent
+$configDir2 = Split-Path $rolesDir2 -Parent
+$configXmlPath2 = Join-Path $configDir2 "Configuration.xml"
+$inferredRoleName = Split-Path $roleDir2 -Leaf
+
+# Use metadata name if available
+if ($MetadataPath -and (Test-Path $MetadataPath)) {
+	try {
+		[xml]$metaXml2 = Get-Content -Path $MetadataPath -Encoding UTF8
+		$nameNode2 = $metaXml2.DocumentElement.SelectSingleNode("//*[local-name()='Role']//*[local-name()='Name']")
+		if ($nameNode2 -and $nameNode2.InnerText) {
+			$inferredRoleName = $nameNode2.InnerText
+		}
+	} catch { }
+}
+
+if (Test-Path $configXmlPath2) {
+	$script:lines += ""
+	try {
+		[xml]$cfgXml = Get-Content -Path $configXmlPath2 -Encoding UTF8
+		$cfgNs = New-Object System.Xml.XmlNamespaceManager($cfgXml.NameTable)
+		$cfgNs.AddNamespace("md", "http://v8.1c.ru/8.3/MDClasses")
+		$childObj = $cfgXml.SelectSingleNode("//md:Configuration/md:ChildObjects", $cfgNs)
+		if ($childObj) {
+			$roleNodes = $childObj.SelectNodes("md:Role", $cfgNs)
+			$found = $false
+			foreach ($rn in $roleNodes) {
+				if ($rn.InnerText -eq $inferredRoleName) {
+					$found = $true
+					break
+				}
+			}
+			if ($found) {
+				Out-OK "Configuration.xml: <Role>$inferredRoleName</Role> registered"
+			} else {
+				Out-WARN "Configuration.xml: <Role>$inferredRoleName</Role> NOT found in ChildObjects"
+			}
+		}
+	} catch {
+		Out-WARN "Configuration.xml: parse error — $($_.Exception.Message)"
+	}
+}
+
+# --- 6. Summary ---
 
 $script:lines += "---"
 $script:lines += "Result: $($script:errors) error(s), $($script:warnings) warning(s)"

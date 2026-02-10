@@ -628,10 +628,86 @@ $enc = New-Object System.Text.UTF8Encoding($true)
 [System.IO.File]::WriteAllText($metadataPath, $metadataXml, $enc)
 [System.IO.File]::WriteAllText($rightsPath, $rightsXml, $enc)
 
-# --- 12. Summary ---
+# --- 12. Register in Configuration.xml ---
+
+$configDir = Split-Path $outDir -Parent
+$configXmlPath = Join-Path $configDir "Configuration.xml"
+$regResult = $null
+
+if (Test-Path $configXmlPath) {
+	$configDoc = New-Object System.Xml.XmlDocument
+	$configDoc.PreserveWhitespace = $true
+	$configDoc.Load($configXmlPath)
+
+	$nsMgr = New-Object System.Xml.XmlNamespaceManager($configDoc.NameTable)
+	$nsMgr.AddNamespace("md", "http://v8.1c.ru/8.3/MDClasses")
+
+	$childObjects = $configDoc.SelectSingleNode("//md:Configuration/md:ChildObjects", $nsMgr)
+	if ($childObjects) {
+		$existing = $childObjects.SelectNodes("md:Role", $nsMgr)
+		$alreadyExists = $false
+		foreach ($r in $existing) {
+			if ($r.InnerText -eq $roleName) {
+				$alreadyExists = $true
+				break
+			}
+		}
+
+		if ($alreadyExists) {
+			$regResult = "already"
+		} else {
+			$roleElem = $configDoc.CreateElement("Role", "http://v8.1c.ru/8.3/MDClasses")
+			$roleElem.InnerText = $roleName
+
+			if ($existing.Count -gt 0) {
+				# Insert after last existing <Role>
+				$lastRole = $existing[$existing.Count - 1]
+				$newWs = $configDoc.CreateWhitespace("`n`t`t`t")
+				$childObjects.InsertAfter($newWs, $lastRole) | Out-Null
+				$childObjects.InsertAfter($roleElem, $newWs) | Out-Null
+			} else {
+				# No existing roles — insert before closing whitespace
+				$lastChild = $childObjects.LastChild
+				if ($lastChild.NodeType -eq [System.Xml.XmlNodeType]::Whitespace) {
+					$newWs = $configDoc.CreateWhitespace("`n`t`t`t")
+					$childObjects.InsertBefore($newWs, $lastChild) | Out-Null
+					$childObjects.InsertBefore($roleElem, $lastChild) | Out-Null
+				} else {
+					$childObjects.AppendChild($configDoc.CreateWhitespace("`n`t`t`t")) | Out-Null
+					$childObjects.AppendChild($roleElem) | Out-Null
+					$childObjects.AppendChild($configDoc.CreateWhitespace("`n`t`t")) | Out-Null
+				}
+			}
+
+			# Save
+			$cfgSettings = New-Object System.Xml.XmlWriterSettings
+			$cfgSettings.Encoding = New-Object System.Text.UTF8Encoding($true)
+			$cfgSettings.Indent = $false
+			$stream = New-Object System.IO.FileStream($configXmlPath, [System.IO.FileMode]::Create)
+			$writer = [System.Xml.XmlWriter]::Create($stream, $cfgSettings)
+			$configDoc.Save($writer)
+			$writer.Close()
+			$stream.Close()
+
+			$regResult = "added"
+		}
+	} else {
+		$regResult = "no-childobj"
+	}
+} else {
+	$regResult = "no-config"
+}
+
+# --- 13. Summary ---
 
 Write-Host "[OK] Role '$roleName' compiled"
 Write-Host "     UUID: $uuid"
 Write-Host "     Metadata: $metadataPath"
 Write-Host "     Rights:   $rightsPath"
 Write-Host "     Objects: $($parsedObjects.Count), Rights: $totalRights, Templates: $templateCount"
+switch ($regResult) {
+	"added"       { Write-Host "     Configuration.xml: <Role>$roleName</Role> added to ChildObjects" }
+	"already"     { Write-Host "     Configuration.xml: <Role>$roleName</Role> already registered" }
+	"no-childobj" { Write-Warning "Configuration.xml found but <ChildObjects> not found" }
+	"no-config"   { Write-Warning "Configuration.xml not found at $configXmlPath — register manually" }
+}

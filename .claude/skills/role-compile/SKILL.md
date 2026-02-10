@@ -24,7 +24,7 @@ allowed-tools:
 powershell.exe -NoProfile -File .claude\skills\role-compile\scripts\role-compile.ps1 -JsonPath "<json>" -OutputDir "<RolesDir>"
 ```
 
-После генерации: добавить `<Role>ИмяРоли</Role>` в `<ChildObjects>` файла `Configuration.xml`.
+`<Role>ИмяРоли</Role>` автоматически добавляется в `<ChildObjects>` файла `Configuration.xml` (ожидается в parent от `RolesDir`).
 
 ## JSON DSL
 
