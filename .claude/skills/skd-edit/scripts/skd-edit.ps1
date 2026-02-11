@@ -1,4 +1,4 @@
-﻿# skd-edit v1.0 — Atomic 1C DCS editor
+﻿# skd-edit v1.1 — Atomic 1C DCS editor
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[Parameter(Mandatory)]
@@ -8,6 +8,7 @@ param(
 	[ValidateSet(
 		"add-field","add-total","add-calculated-field","add-parameter","add-filter",
 		"add-dataParameter","add-order","add-selection","add-dataSetLink",
+		"add-dataSet","add-variant","add-conditionalAppearance",
 		"set-query","set-outputParameter","set-structure",
 		"modify-field","modify-filter","modify-dataParameter",
 		"clear-selection","clear-order","clear-filter",
@@ -428,6 +429,78 @@ function Parse-DataSetLinkShorthand {
 	return $result
 }
 
+function Parse-DataSetShorthand {
+	param([string]$s)
+
+	$s = $s.Trim()
+	# "Name: QUERY" — split on first ": " only if prefix is a single word (no spaces)
+	if ($s -match '^(\S+):\s(.+)$') {
+		return @{ name = $Matches[1]; query = $Matches[2] }
+	}
+	return @{ name = ""; query = $s }
+}
+
+function Parse-VariantShorthand {
+	param([string]$s)
+
+	$presentation = ""
+	if ($s -match '\[([^\]]+)\]') {
+		$presentation = $Matches[1]
+		$s = $s -replace '\s*\[[^\]]+\]', ''
+	}
+	$name = $s.Trim()
+	if (-not $presentation) { $presentation = $name }
+	return @{ name = $name; presentation = $presentation }
+}
+
+function Parse-ConditionalAppearanceShorthand {
+	param([string]$s)
+
+	$result = @{ param = ""; value = ""; filter = $null; fields = @() }
+
+	# Extract " when ..." — condition part
+	$whenIdx = $s.IndexOf(' when ')
+	$forIdx = $s.IndexOf(' for ')
+
+	# Determine boundaries
+	$mainEnd = $s.Length
+	if ($whenIdx -ge 0 -and $forIdx -ge 0) {
+		$mainEnd = [Math]::Min($whenIdx, $forIdx)
+	} elseif ($whenIdx -ge 0) {
+		$mainEnd = $whenIdx
+	} elseif ($forIdx -ge 0) {
+		$mainEnd = $forIdx
+	}
+
+	# Parse "for" fields
+	if ($forIdx -ge 0) {
+		$forEnd = $s.Length
+		if ($whenIdx -gt $forIdx) { $forEnd = $whenIdx }
+		$forPart = $s.Substring($forIdx + 5, $forEnd - $forIdx - 5).Trim()
+		$result.fields = @($forPart -split '\s*,\s*' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+	}
+
+	# Parse "when" filter
+	if ($whenIdx -ge 0) {
+		$whenEnd = $s.Length
+		if ($forIdx -gt $whenIdx) { $whenEnd = $forIdx }
+		$whenPart = $s.Substring($whenIdx + 6, $whenEnd - $whenIdx - 6).Trim()
+		$result.filter = Parse-FilterShorthand $whenPart
+	}
+
+	# Parse main part: "Param = Value"
+	$mainPart = $s.Substring(0, $mainEnd).Trim()
+	$eqIdx = $mainPart.IndexOf('=')
+	if ($eqIdx -gt 0) {
+		$result.param = $mainPart.Substring(0, $eqIdx).Trim()
+		$result.value = $mainPart.Substring($eqIdx + 1).Trim()
+	} else {
+		$result.param = $mainPart
+	}
+
+	return $result
+}
+
 function Parse-StructureShorthand {
 	param([string]$s)
 
@@ -835,6 +908,104 @@ function Build-DataSetLinkFragment {
 		$lines += "$i`t<parameter>$(Esc-Xml $parsed.parameter)</parameter>"
 	}
 	$lines += "$i</dataSetLink>"
+	return $lines -join "`r`n"
+}
+
+function Build-DataSetQueryFragment {
+	param($parsed, [string]$indent)
+
+	$i = $indent
+	$lines = @()
+	$lines += "$i<dataSet xsi:type=`"DataSetQuery`">"
+	$lines += "$i`t<name>$(Esc-Xml $parsed.name)</name>"
+	$lines += "$i`t<dataSource>$(Esc-Xml $parsed.dataSource)</dataSource>"
+	$lines += "$i`t<query>$(Esc-Xml $parsed.query)</query>"
+	$lines += "$i</dataSet>"
+	return $lines -join "`r`n"
+}
+
+function Build-VariantFragment {
+	param($parsed, [string]$indent)
+
+	$i = $indent
+	$lines = @()
+	$lines += "$i<settingsVariant>"
+	$lines += "$i`t<dcsset:name>$(Esc-Xml $parsed.name)</dcsset:name>"
+	$lines += (Build-MLTextXml -tag "dcsset:presentation" -text $parsed.presentation -indent "$i`t")
+	$lines += "$i`t<dcsset:settings xmlns:style=`"http://v8.1c.ru/8.1/data/ui/style`" xmlns:sys=`"http://v8.1c.ru/8.1/data/ui/fonts/system`" xmlns:web=`"http://v8.1c.ru/8.1/data/ui/colors/web`" xmlns:win=`"http://v8.1c.ru/8.1/data/ui/colors/windows`">"
+	$lines += "$i`t`t<dcsset:selection>"
+	$lines += "$i`t`t`t<dcsset:item xsi:type=`"dcsset:SelectedItemAuto`"/>"
+	$lines += "$i`t`t</dcsset:selection>"
+	$lines += "$i`t`t<dcsset:item xsi:type=`"dcsset:StructureItemGroup`">"
+	$lines += "$i`t`t`t<dcsset:groupItems/>"
+	$lines += "$i`t`t`t<dcsset:order>"
+	$lines += "$i`t`t`t`t<dcsset:item xsi:type=`"dcsset:OrderItemAuto`"/>"
+	$lines += "$i`t`t`t</dcsset:order>"
+	$lines += "$i`t`t`t<dcsset:selection>"
+	$lines += "$i`t`t`t`t<dcsset:item xsi:type=`"dcsset:SelectedItemAuto`"/>"
+	$lines += "$i`t`t`t</dcsset:selection>"
+	$lines += "$i`t`t</dcsset:item>"
+	$lines += "$i`t</dcsset:settings>"
+	$lines += "$i</settingsVariant>"
+	return $lines -join "`r`n"
+}
+
+function Build-ConditionalAppearanceItemFragment {
+	param($parsed, [string]$indent)
+
+	$i = $indent
+	$lines = @()
+	$lines += "$i<dcsset:item>"
+
+	# selection
+	if ($parsed.fields -and $parsed.fields.Count -gt 0) {
+		$lines += "$i`t<dcsset:selection>"
+		foreach ($fld in $parsed.fields) {
+			$lines += "$i`t`t<dcsset:item>"
+			$lines += "$i`t`t`t<dcsset:field>$(Esc-Xml $fld)</dcsset:field>"
+			$lines += "$i`t`t</dcsset:item>"
+		}
+		$lines += "$i`t</dcsset:selection>"
+	} else {
+		$lines += "$i`t<dcsset:selection/>"
+	}
+
+	# filter
+	if ($parsed.filter) {
+		$lines += "$i`t<dcsset:filter>"
+		$f = $parsed.filter
+		$lines += "$i`t`t<dcsset:item xsi:type=`"dcsset:FilterItemComparison`">"
+		$lines += "$i`t`t`t<dcsset:left xsi:type=`"dcscor:Field`">$(Esc-Xml $f.field)</dcsset:left>"
+		$lines += "$i`t`t`t<dcsset:comparisonType>$(Esc-Xml $f.op)</dcsset:comparisonType>"
+		if ($null -ne $f.value) {
+			$vt = if ($f["valueType"]) { $f["valueType"] } else { "xs:string" }
+			$lines += "$i`t`t`t<dcsset:right xsi:type=`"$vt`">$(Esc-Xml "$($f.value)")</dcsset:right>"
+		}
+		$lines += "$i`t`t</dcsset:item>"
+		$lines += "$i`t</dcsset:filter>"
+	} else {
+		$lines += "$i`t<dcsset:filter/>"
+	}
+
+	# appearance
+	$lines += "$i`t<dcsset:appearance>"
+
+	# Auto-detect value type
+	$val = $parsed.value
+	$valType = "xs:string"
+	if ($val -match '^(web|style|win):') {
+		$valType = "v8ui:Color"
+	} elseif ($val -eq "true" -or $val -eq "false") {
+		$valType = "xs:boolean"
+	}
+
+	$lines += "$i`t`t<dcscor:item xsi:type=`"dcsset:SettingsParameterValue`">"
+	$lines += "$i`t`t`t<dcscor:parameter>$(Esc-Xml $parsed.param)</dcscor:parameter>"
+	$lines += "$i`t`t`t<dcscor:value xsi:type=`"$valType`">$(Esc-Xml $val)</dcscor:value>"
+	$lines += "$i`t`t</dcscor:item>"
+	$lines += "$i`t</dcsset:appearance>"
+
+	$lines += "$i</dcsset:item>"
 	return $lines -join "`r`n"
 }
 
@@ -1249,7 +1420,7 @@ $corNs = "http://v8.1c.ru/8.1/data-composition-system/core"
 
 # --- 7. Batch value splitting ---
 
-if ($Operation -eq "set-query" -or $Operation -eq "set-structure") {
+if ($Operation -eq "set-query" -or $Operation -eq "set-structure" -or $Operation -eq "add-dataSet") {
 	$values = @($Value)
 } else {
 	$values = @($Value -split ';;' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
@@ -1634,6 +1805,126 @@ switch ($Operation) {
 			$desc = "$($parsed.source) > $($parsed.dest) on $($parsed.sourceExpr) = $($parsed.destExpr)"
 			if ($parsed.parameter) { $desc += " [param $($parsed.parameter)]" }
 			Write-Host "[OK] DataSetLink `"$desc`" added"
+		}
+	}
+
+	"add-dataSet" {
+		$root = $xmlDoc.DocumentElement
+		$childIndent = Get-ChildIndent $root
+
+		$parsed = Parse-DataSetShorthand $Value
+
+		# Auto-name if empty
+		if (-not $parsed.name) {
+			$count = 0
+			foreach ($ch in $root.ChildNodes) {
+				if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'dataSet' -and $ch.NamespaceURI -eq $schNs) { $count++ }
+			}
+			$parsed.name = "НаборДанных$($count + 1)"
+		}
+
+		# Duplicate check
+		$existing = Find-ElementByChildValue $root "dataSet" "name" $parsed.name $schNs
+		if ($existing) {
+			Write-Host "[WARN] DataSet `"$($parsed.name)`" already exists — skipped"
+		} else {
+			# Get dataSource name from first existing <dataSource>
+			$dsSourceEl = Find-FirstElement $root @("dataSource") $schNs
+			$dsSourceName = "ИсточникДанных1"
+			if ($dsSourceEl) {
+				$nameEl = Find-FirstElement $dsSourceEl @("name") $schNs
+				if ($nameEl) { $dsSourceName = $nameEl.InnerText.Trim() }
+			}
+			$parsed["dataSource"] = $dsSourceName
+
+			$fragXml = Build-DataSetQueryFragment -parsed $parsed -indent $childIndent
+			$nodes = Import-Fragment $xmlDoc $fragXml
+
+			# Insert after last <dataSet>, or after <dataSource> if none
+			$lastDS = Find-LastElement $root "dataSet" $schNs
+			if ($lastDS) {
+				$refNode = $lastDS.NextSibling
+				while ($refNode -and ($refNode.NodeType -eq 'Whitespace' -or $refNode.NodeType -eq 'SignificantWhitespace')) {
+					$refNode = $refNode.NextSibling
+				}
+			} else {
+				$refNode = Find-FirstElement $root @("dataSetLink","calculatedField","totalField","parameter","template","groupTemplate","settingsVariant") $schNs
+			}
+
+			foreach ($node in $nodes) {
+				Insert-BeforeElement $root $node $refNode $childIndent
+			}
+
+			Write-Host "[OK] DataSet `"$($parsed.name)`" added (dataSource=$dsSourceName)"
+		}
+	}
+
+	"add-variant" {
+		$root = $xmlDoc.DocumentElement
+		$childIndent = Get-ChildIndent $root
+
+		foreach ($val in $values) {
+			$parsed = Parse-VariantShorthand $val
+
+			# Duplicate check — search for settingsVariant with matching dcsset:name
+			$isDup = $false
+			foreach ($ch in $root.ChildNodes) {
+				if ($ch.NodeType -eq 'Element' -and $ch.LocalName -eq 'settingsVariant' -and $ch.NamespaceURI -eq $schNs) {
+					foreach ($gc in $ch.ChildNodes) {
+						if ($gc.NodeType -eq 'Element' -and $gc.LocalName -eq 'name' -and $gc.NamespaceURI -eq $setNs -and $gc.InnerText -eq $parsed.name) {
+							$isDup = $true; break
+						}
+					}
+					if ($isDup) { break }
+				}
+			}
+			if ($isDup) {
+				Write-Host "[WARN] Variant `"$($parsed.name)`" already exists — skipped"
+				continue
+			}
+
+			$fragXml = Build-VariantFragment -parsed $parsed -indent $childIndent
+			$nodes = Import-Fragment $xmlDoc $fragXml
+
+			# Insert after last <settingsVariant>
+			$lastSV = Find-LastElement $root "settingsVariant" $schNs
+			if ($lastSV) {
+				$refNode = $lastSV.NextSibling
+				while ($refNode -and ($refNode.NodeType -eq 'Whitespace' -or $refNode.NodeType -eq 'SignificantWhitespace')) {
+					$refNode = $refNode.NextSibling
+				}
+			} else {
+				$refNode = $null
+			}
+
+			foreach ($node in $nodes) {
+				Insert-BeforeElement $root $node $refNode $childIndent
+			}
+
+			Write-Host "[OK] Variant `"$($parsed.name)`" [`"$($parsed.presentation)`"] added"
+		}
+	}
+
+	"add-conditionalAppearance" {
+		$settings = Resolve-VariantSettings
+		$varName = Get-VariantName
+
+		foreach ($val in $values) {
+			$parsed = Parse-ConditionalAppearanceShorthand $val
+
+			$caEl = Ensure-SettingsChild $settings "conditionalAppearance" @("outputParameters","order","filter","selection")
+			$caIndent = Get-ContainerChildIndent $caEl
+
+			$fragXml = Build-ConditionalAppearanceItemFragment -parsed $parsed -indent $caIndent
+			$nodes = Import-Fragment $xmlDoc $fragXml
+			foreach ($node in $nodes) {
+				Insert-BeforeElement $caEl $node $null $caIndent
+			}
+
+			$desc = "$($parsed.param) = $($parsed.value)"
+			if ($parsed.filter) { $desc += " when $($parsed.filter.field) $($parsed.filter.op)" }
+			if ($parsed.fields -and $parsed.fields.Count -gt 0) { $desc += " for $($parsed.fields -join ', ')" }
+			Write-Host "[OK] ConditionalAppearance `"$desc`" added to variant `"$varName`""
 		}
 	}
 
