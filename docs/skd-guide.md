@@ -58,16 +58,18 @@
 "totalFields": ["Количество: Сумма", "Стоимость: Сумма(Кол * Цена)"]
 ```
 
-Формат: `Поле: Функция` или `Поле: Функция(выражение)`.
+Формат: `Поле: Функция` или `Поле: Функция(выражение)`. Объектная форма поддерживает привязку к группировкам: `{ "dataPath": "X", "expression": "Сумма(X)", "group": ["Группа1", "ОбщийИтог"] }`.
 
-### Параметры — shorthand
+### Параметры — shorthand + @autoDates
 
 ```json
 "parameters": [
-  "Период: StandardPeriod = LastMonth",
+  "Период: StandardPeriod = LastMonth @autoDates",
   "Организация: CatalogRef.Организации"
 ]
 ```
+
+`@autoDates` автоматически генерирует параметры `ДатаНачала`/`ДатаОкончания` (заменяет 5 строк на 1).
 
 ### Вычисляемые поля — shorthand
 
@@ -75,9 +77,30 @@
 "calculatedFields": ["Итого = Количество * Цена"]
 ```
 
+### Варианты настроек — shorthand
+
+```json
+"settingsVariants": [{
+  "name": "Основной",
+  "settings": {
+    "selection": ["Номенклатура", "Количество", "Сумма"],
+    "filter": ["Организация = _ @off @user"],
+    "order": ["Сумма desc"],
+    "dataParameters": ["Период = LastMonth @user"],
+    "outputParameters": { "Заголовок": "Мой отчёт" },
+    "structure": "Организация > details"
+  }
+}]
+```
+
+- **filter shorthand**: `"Поле оператор значение @флаги"` — флаги `@off`, `@user`, `@quickAccess`, `@normal`, `@inaccessible`
+- **dataParameters shorthand**: `"Имя = значение @флаги"`
+- **structure shorthand**: `"Поле1 > Поле2 > details"` — `>` разделяет уровни группировки
+- **conditionalAppearance**: условное оформление с автоопределением типов значений (Color, Boolean, LocalStringType)
+
 ### Объектная форма
 
-Все секции поддерживают полную объектную форму для сложных случаев (title, appearance, role с выражениями, userSettingID и т.д.). Подробности — в [спецификации SKD DSL](skd-dsl-spec.md).
+Все секции поддерживают полную объектную форму для сложных случаев (title, appearance, role с выражениями, userSettingID, userSettingPresentation, conditionalAppearance, группы фильтров And/Or/Not и т.д.). Подробности — в [спецификации SKD DSL](skd-dsl-spec.md).
 
 ## Сценарии использования
 
@@ -114,16 +137,13 @@ Claude сформирует JSON:
     ]
   }],
   "totalFields": ["Количество: Сумма", "Сумма: Сумма"],
-  "parameters": ["Период: StandardPeriod = LastMonth"],
+  "parameters": ["Период: StandardPeriod = LastMonth @autoDates"],
   "settingsVariants": [{
     "name": "Основной",
     "settings": {
-      "selection": ["Номенклатура", "Количество", "Сумма", "Auto"],
-      "structure": [{
-        "type": "group", "groupBy": ["Организация"],
-        "selection": ["Auto"], "order": ["Auto"],
-        "children": [{ "type": "group", "selection": ["Auto"], "order": ["Auto"] }]
-      }]
+      "selection": ["Номенклатура", "Количество", "Сумма"],
+      "dataParameters": ["Период = LastMonth @user"],
+      "structure": "Организация > details"
     }
   }]
 }

@@ -255,6 +255,27 @@
 { "dataPath": "X", "expression": "Максимум(X)", "group": "Группа1" }
 ```
 
+### Привязка к группировкам (group)
+
+В объектной форме поле `group` может быть строкой или массивом строк. Каждая строка задаёт имя группировки, для которой вычисляется итог:
+
+```json
+"totalFields": [
+  { "dataPath": "Кол", "expression": "Сумма(Кол)", "group": ["ГруппаПользователей", "ГруппаПользователей Иерархия", "ОбщийИтог"] }
+]
+```
+
+XML-маппинг — по `<group>` на каждый элемент:
+```xml
+<totalField>
+  <dataPath>Кол</dataPath>
+  <expression>Сумма(Кол)</expression>
+  <group>ГруппаПользователей</group>
+  <group>ГруппаПользователей Иерархия</group>
+  <group>ОбщийИтог</group>
+</totalField>
+```
+
 ---
 
 ## 6. Параметры (parameters)
@@ -402,6 +423,7 @@
     "selection": [...],
     "filter": [...],
     "order": [...],
+    "conditionalAppearance": [...],
     "outputParameters": {...},
     "dataParameters": [...],
     "structure": [...]
@@ -436,12 +458,14 @@
 ]
 ```
 
-Формат: `"<Поле> <оператор> [<значение>] [@off] [@user] [@quickAccess]"`.
+Формат: `"<Поле> <оператор> [<значение>] [@off] [@user] [@quickAccess] [@normal] [@inaccessible]"`.
 
 - Значение `_` — пустое (placeholder, не выводится в XML)
 - `@off` → `use=false`
 - `@user` → `userSettingID=auto` (генерировать GUID)
 - `@quickAccess` → `viewMode=QuickAccess`
+- `@normal` → `viewMode=Normal`
+- `@inaccessible` → `viewMode=Inaccessible`
 - Типы значений автоопределяются: `true`/`false` → boolean, `2024-01-01T00:00:00` → dateTime, числа → decimal, прочее → string
 
 #### Объектная форма
@@ -467,6 +491,7 @@
 | `presentation` | Текст подсказки |
 | `viewMode` | `"Normal"`, `"QuickAccess"`, `"Inaccessible"` |
 | `userSettingID` | `"auto"` → генерировать GUID |
+| `userSettingPresentation` | Отображаемое имя настройки (LocalStringType) |
 
 Операторы:
 
@@ -500,6 +525,51 @@
 - `"Field asc"` → `OrderItemField`, `orderType=Asc`
 - `"Auto"` → `OrderItemAuto` (только на уровне группировок; на верхнем уровне settings игнорируется)
 
+### conditionalAppearance
+
+Условное оформление — массив правил, каждое задаёт набор полей (selection), условия (filter), параметры оформления (appearance) и мета-атрибуты.
+
+```json
+"conditionalAppearance": [
+  {
+    "selection": ["Сумма"],
+    "filter": ["Сумма > 1000"],
+    "appearance": { "ЦветТекста": "style:ПросроченныеДанныеЦвет" },
+    "presentation": "Выделять крупные суммы",
+    "viewMode": "Normal",
+    "userSettingID": "auto"
+  },
+  {
+    "filter": ["Статус notFilled"],
+    "appearance": { "Текст": "Не указано", "ЦветТекста": "web:Gray" },
+    "presentation": "Скрывать пустые статусы"
+  }
+]
+```
+
+| Поле | Описание |
+|------|----------|
+| `selection` | Массив полей, к которым применяется. Пусто/опущено = все поля |
+| `filter` | Условия (shorthand-строки или объекты, как в settings filter) |
+| `appearance` | Объект `{ "Параметр": "Значение" }` |
+| `presentation` | Описание правила |
+| `use` | Включено (`true` по умолчанию) |
+| `viewMode` | `"Normal"`, `"QuickAccess"`, `"Inaccessible"` |
+| `userSettingID` | `"auto"` → генерировать GUID |
+
+**Типы значений appearance** определяются автоматически:
+- `style:XXX`, `web:XXX`, `win:XXX` → `v8ui:Color`
+- `true`/`false` → `xs:boolean`
+- Параметр `Текст` или `Заголовок` → `v8:LocalStringType`
+- Прочее → `xs:string`
+
+Поддержка `use=false` на уровне параметра:
+```json
+"appearance": {
+  "ЦветФона": { "value": "web:LightGray", "use": false }
+}
+```
+
 ### outputParameters
 
 ```json
@@ -531,7 +601,7 @@
 ]
 ```
 
-Формат: `"<Имя> [= <значение>] [@off] [@user] [@quickAccess] [@normal]"`.
+Формат: `"<Имя> [= <значение>] [@off] [@user] [@quickAccess] [@normal] [@inaccessible]"`.
 
 - Значения-варианты периодов (`LastMonth`, `ThisYear` и др.) автоматически оборачиваются в `v8:StandardPeriod`
 - `@off` → `use=false`, `@user` → `userSettingID=auto`
@@ -541,9 +611,18 @@
 ```json
 "dataParameters": [
   { "parameter": "Период", "value": { "variant": "LastMonth" }, "userSettingID": "auto" },
-  { "parameter": "Организация", "use": false, "viewMode": "Normal", "userSettingID": "auto" }
+  { "parameter": "Организация", "use": false, "viewMode": "Normal", "userSettingID": "auto", "userSettingPresentation": "Организация отчёта" }
 ]
 ```
+
+| Поле | Описание |
+|------|----------|
+| `parameter` | Имя параметра |
+| `value` | Значение (объект `{ "variant": "LastMonth" }` для StandardPeriod, или скаляр) |
+| `use` | Включён (`true` по умолчанию) |
+| `viewMode` | `"Normal"`, `"QuickAccess"`, `"Inaccessible"` |
+| `userSettingID` | `"auto"` → генерировать GUID |
+| `userSettingPresentation` | Отображаемое имя настройки (LocalStringType) |
 
 ### structure
 
