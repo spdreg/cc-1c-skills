@@ -147,13 +147,13 @@
 | `boolean` | `xs:boolean` | — |
 | `date` | `xs:dateTime` | DateFractions=Date |
 | `dateTime` | `xs:dateTime` | DateFractions=DateTime |
-| `CatalogRef.XXX` | *(не эмитируется)* | Роль поля сохраняется, `<valueType>` опускается |
-| `DocumentRef.XXX` | *(не эмитируется)* | Платформа определяет тип из запроса |
-| `EnumRef.XXX` | *(не эмитируется)* | |
-| `ChartOfAccountsRef.XXX` | *(не эмитируется)* | |
+| `CatalogRef.XXX` | `d5p1:CatalogRef.XXX` | inline xmlns:d5p1 |
+| `DocumentRef.XXX` | `d5p1:DocumentRef.XXX` | inline xmlns:d5p1 |
+| `EnumRef.XXX` | `d5p1:EnumRef.XXX` | inline xmlns:d5p1 |
+| `ChartOfAccountsRef.XXX` | `d5p1:ChartOfAccountsRef.XXX` | inline xmlns:d5p1 |
 | `StandardPeriod` | `v8:StandardPeriod` | — |
 
-> **Ссылочные типы** (`CatalogRef.XXX`, `DocumentRef.XXX` и др.) указываются в JSON для задания ролей полей (`@dimension`, `@account` и т.д.), но **не эмитируются** в `<valueType>`. Реальные DCS-файлы 1С не содержат `cfg:` ссылок в valueType — платформа определяет типы полей автоматически из метаданных запроса. Включение `cfg:` типов приводит к ошибке XDTO при загрузке.
+> **Ссылочные типы** (`CatalogRef.XXX`, `DocumentRef.XXX` и др.) эмитируются с inline namespace declaration: `<v8:Type xmlns:d5p1="http://v8.1c.ru/8.1/data/enterprise/current-config">d5p1:CatalogRef.XXX</v8:Type>`. Использование префикса `cfg:` вместо `d5p1:` с объявлением namespace приводит к ошибке XDTO. Сборка EPF со ссылочными типами требует базу с соответствующей конфигурацией (не пустую).
 
 ### Синонимы типов
 

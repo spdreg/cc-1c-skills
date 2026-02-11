@@ -195,25 +195,20 @@ function Emit-ValueType {
 		return
 	}
 
-	# cfg: references — skip in DCS (platform infers types from query metadata)
-	# Emitting cfg:CatalogRef.XXX causes XDTO errors; real DCS files never use them
+	# Reference types: CatalogRef.XXX, DocumentRef.XXX, EnumRef.XXX, etc.
+	# Real DCS files use inline namespace d5p1="http://v8.1c.ru/8.1/data/enterprise/current-config"
 	if ($typeStr -match '^(CatalogRef|DocumentRef|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef)\.') {
+		X "$indent<v8:Type xmlns:d5p1=`"http://v8.1c.ru/8.1/data/enterprise/current-config`">d5p1:$(Esc-Xml $typeStr)</v8:Type>"
 		return
 	}
 
-	# Fallback — skip dot-qualified types (likely cfg: references)
+	# Fallback — assume dot-qualified types are also config references
 	if ($typeStr.Contains('.')) {
+		X "$indent<v8:Type xmlns:d5p1=`"http://v8.1c.ru/8.1/data/enterprise/current-config`">d5p1:$(Esc-Xml $typeStr)</v8:Type>"
 		return
 	}
 
 	X "$indent<v8:Type>$(Esc-Xml $typeStr)</v8:Type>"
-}
-
-function Is-RefType {
-	param([string]$typeStr)
-	if (-not $typeStr) { return $false }
-	$resolved = Resolve-TypeStr $typeStr
-	return ($resolved -match '^(CatalogRef|DocumentRef|EnumRef|ChartOfAccountsRef|ChartOfCharacteristicTypesRef)\.' -or ($resolved.Contains('.') -and $resolved -notmatch '^(string|decimal)'))
 }
 
 # --- 5. Field shorthand parser ---
@@ -583,8 +578,8 @@ function Emit-Field {
 		X "$indent`t</role>"
 	}
 
-	# ValueType (skip for cfg: reference types — platform infers from query)
-	if ($f.type -and -not (Is-RefType $f.type)) {
+	# ValueType
+	if ($f.type) {
 		X "$indent`t<valueType>"
 		Emit-ValueType -typeStr $f.type -indent "$indent`t`t"
 		X "$indent`t</valueType>"
