@@ -1,7 +1,7 @@
 ---
 name: meta-info
-description: Компактная сводка объекта метаданных конфигурации 1С — реквизиты, ТЧ, типы, движения
-argument-hint: <ObjectPath> [-Mode overview|brief|full] [-Name <реквизит|ТЧ>]
+description: Компактная сводка объекта метаданных 1С — структура, типы, флаги, операции, движения
+argument-hint: <ObjectPath> [-Mode overview|brief|full] [-Name <элемент>]
 allowed-tools:
   - Bash
   - Read
@@ -10,7 +10,7 @@ allowed-tools:
 
 # /meta-info — Сводка объекта метаданных 1С
 
-Читает XML-файл объекта метаданных конфигурации 1С и выводит компактную сводку: реквизиты с типами, табличные части, движения, формы. Заменяет необходимость читать тысячи строк XML.
+Читает XML-файл объекта метаданных конфигурации 1С и выводит компактную сводку. Заменяет необходимость читать тысячи строк XML.
 
 ## Параметры и команда
 
@@ -18,7 +18,7 @@ allowed-tools:
 |----------|----------|
 | `ObjectPath` | Путь к XML-файлу объекта или каталогу (авто-резолв `<name>/<name>.xml`) |
 | `Mode` | Режим: `overview` (default), `brief`, `full` |
-| `Name` | Drill-down: раскрыть ТЧ или деталь реквизита |
+| `Name` | Drill-down по имени элемента (реквизит, ТЧ, значение перечисления, шаблон URL, операция) |
 | `Limit` / `Offset` | Пагинация (по умолчанию 150 строк) |
 | `OutFile` | Записать результат в файл (UTF-8 BOM) |
 
@@ -30,48 +30,62 @@ powershell.exe -NoProfile -File .claude\skills\meta-info\scripts\meta-info.ps1 -
 
 | Режим | Что показывает |
 |---|---|
-| `overview` *(default)* | Заголовок + ключевые свойства + все поля с типами + имена ТЧ (без раскрытия) |
-| `brief` | Только имена полей и ТЧ одной строкой |
-| `full` | Всё: поля + колонки всех ТЧ + движения + формы + макеты + команды |
+| `overview` *(default)* | Заголовок + ключевые свойства + структура без раскрытия деталей |
+| `brief` | Всё одной-двумя строками: имена полей, счётчики |
+| `full` | Всё раскрыто: колонки ТЧ, список источников подписки, движения, формы |
 
-`-Name` — drill-down: раскрыть ТЧ (показать колонки) или деталь реквизита.
+`-Name` — drill-down: раскрыть конкретный элемент объекта (ТЧ, реквизит, шаблон URL, операцию веб-сервиса).
 
-## Поддерживаемые типы объектов
+## Поддерживаемые типы (23)
 
-Справочник, Документ, Перечисление, Регистр сведений, Регистр накопления, Регистр бухгалтерии, План счетов, План видов характеристик, Бизнес-процесс, Задача, План обмена, Отчёт, Обработка, Константа, Журнал документов, Определяемый тип, Общий модуль, Регламентное задание, Подписка на событие, HTTP-сервис, Веб-сервис.
+**Объектные:** Справочник, Документ, Перечисление, Бизнес-процесс, Задача, План обмена
+**Регистровые:** Регистр сведений, Регистр накопления, Регистр бухгалтерии, Регистр расчёта
+**Планы:** План счетов, План видов характеристик, План видов расчёта
+**Отчёты/обработки:** Отчёт, Обработка
+**Сервисные:** HTTP-сервис, Веб-сервис, Общий модуль, Регламентное задание, Подписка на событие
+**Прочие:** Константа, Журнал документов, Определяемый тип
 
 ## Примеры
 
 ```powershell
-# Перечисление
-... -ObjectPath upload\erp\Enums\ABCКлассификация.xml
+# Справочник — overview
+... -ObjectPath Catalogs\Валюты\Валюты.xml
 
-# Справочник brief
-... -ObjectPath upload\acc\Catalogs\Валюты.xml -Mode brief
+# Документ — полная сводка с колонками ТЧ, движениями, формами
+... -ObjectPath Documents\АвансовыйОтчет\АвансовыйОтчет.xml -Mode full
 
-# Документ full
-... -ObjectPath upload\acc\Documents\АвансовыйОтчет.xml -Mode full
+# Регистр сведений — краткая сводка
+... -ObjectPath InformationRegisters\КурсыВалют\КурсыВалют.xml -Mode brief
 
-# Drill-down в ТЧ
-... -ObjectPath upload\acc\Catalogs\Валюты.xml -Name Представления
+# Drill-down в ТЧ документа
+... -ObjectPath Documents\АвансовыйОтчет\АвансовыйОтчет.xml -Name Товары
 
 # Drill-down в реквизит
-... -ObjectPath upload\acc\Catalogs\Валюты.xml -Name ОсновнаяВалюта
+... -ObjectPath Catalogs\Валюты\Валюты.xml -Name ОсновнаяВалюта
 
-# Определяемый тип
-... -ObjectPath upload\acc\DefinedTypes\GLN.xml
+# Общий модуль — флаги контекста и повторное использование
+... -ObjectPath CommonModules\ОбщегоНазначения\ОбщегоНазначения.xml
 
-# Общий модуль
-... -ObjectPath upload\acc\CommonModules\GoogleПереводчик.xml
+# HTTP-сервис — шаблоны URL и методы
+... -ObjectPath HTTPServices\ExternalAPI\ExternalAPI.xml
 
-# Регламентное задание
-... -ObjectPath upload\acc\ScheduledJobs\АвтоматическоеЗакрытиеМесяца.xml
+# HTTP-сервис — drill-down в шаблон URL
+... -ObjectPath HTTPServices\ExternalAPI\ExternalAPI.xml -Name АктуальныеЗадачи
 
-# HTTP-сервис
-... -ObjectPath upload\acc\HTTPServices\ExternalAPI.xml
+# Веб-сервис — операции с параметрами
+... -ObjectPath WebServices\EnterpriseDataUpload_1_0_1_1\EnterpriseDataUpload_1_0_1_1.xml
 
 # Веб-сервис — drill-down в операцию
-... -ObjectPath upload\acc\WebServices\EnterpriseDataUpload_1_0_1_1.xml -Name TestConnection
+... -ObjectPath WebServices\EnterpriseDataUpload_1_0_1_1\EnterpriseDataUpload_1_0_1_1.xml -Name TestConnection
+
+# Подписка на событие — full раскрывает список источников
+... -ObjectPath EventSubscriptions\ПолныйРегистрацияУдаления\ПолныйРегистрацияУдаления.xml -Mode full
+
+# Регламентное задание
+... -ObjectPath ScheduledJobs\АвтоматическоеЗакрытиеМесяца\АвтоматическоеЗакрытиеМесяца.xml
+
+# Определяемый тип
+... -ObjectPath DefinedTypes\GLN\GLN.xml
 ```
 
 ## Верификация
