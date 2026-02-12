@@ -142,6 +142,8 @@ function Format-Type($typeNode) {
 		$raw = $t.InnerText
 		if ($raw -match '^cfg:DefinedType\.(.+)$') {
 			$types += "ОпределяемыйТип.$($Matches[1])"
+		} elseif ($raw -match '^cfg:Characteristic\.(.+)$') {
+			$types += "Характеристика.$($Matches[1])"
 		} else {
 			$types += $raw
 		}
@@ -193,6 +195,10 @@ function Format-SingleType([string]$raw, $parentNode) {
 			# cfg:EnumRef.Xxx
 			if ($raw -match '^cfg:EnumRef\.(.+)$') {
 				return "ПеречислениеСсылка.$($Matches[1])"
+			}
+			# cfg:Characteristic.Xxx
+			if ($raw -match '^cfg:Characteristic\.(.+)$') {
+				return "Характеристика.$($Matches[1])"
 			}
 			# cfg:DefinedType.Xxx
 			if ($raw -match '^cfg:DefinedType\.(.+)$') {
@@ -287,6 +293,20 @@ function Get-SimpleChildren($parentNode, [string]$tag) {
 	return $result
 }
 
+function Sort-AttrsRefFirst($attrs) {
+	$refs = @()
+	$prims = @()
+	foreach ($a in $attrs) {
+		$t = $a.Type
+		if ($t -match 'Ссылка\.' -or $t -match 'Характеристика\.' -or $t -match 'ОпределяемыйТип\.' -or $t -match 'ПланСчетовСсылка' -or $t -match 'ПВХСсылка' -or $t -match 'ПВРСсылка') {
+			$refs += $a
+		} else {
+			$prims += $a
+		}
+	}
+	return @($refs) + @($prims)
+}
+
 function Decline-Cols([int]$n) {
 	$m = $n % 10
 	$h = $n % 100
@@ -326,14 +346,29 @@ if ($Name -and $childObjs) {
 				$fc = $ap.SelectSingleNode("md:FillChecking", $ns)
 				Out "  Обязательный: $(if ($fc -and $fc.InnerText -eq 'ShowError') { 'да' } else { 'нет' })"
 				$idx = $ap.SelectSingleNode("md:Indexing", $ns)
-				Out "  Индексирование: $(if ($idx) { $idx.InnerText } else { 'нет' })"
+				$idxRu = if (-not $idx -or $idx.InnerText -eq 'DontIndex') { 'нет' }
+					elseif ($idx.InnerText -eq 'Index') { 'Индекс' }
+					elseif ($idx.InnerText -eq 'IndexWithAdditionalOrder') { 'Индекс с доп. упорядочиванием' }
+					else { $idx.InnerText }
+				Out "  Индексирование: $idxRu"
 				$ml = $ap.SelectSingleNode("md:MultiLine", $ns)
 				if ($ml -and $ml.InnerText -eq "true") { Out "  Многострочный: да" }
 				$use = $ap.SelectSingleNode("md:Use", $ns)
-				if ($use -and $use.InnerText -ne "ForItem") { Out "  Использование: $($use.InnerText)" }
+				if ($use -and $use.InnerText -ne "ForItem") {
+					$useRu = switch ($use.InnerText) {
+						"ForFolder" { "для папок" }
+						"ForFolderAndItem" { "для папок и элементов" }
+						default { $use.InnerText }
+					}
+					Out "  Использование: $useRu"
+				}
 				$fv = $ap.SelectSingleNode("md:FillValue", $ns)
 				if ($fv -and -not ($fv.GetAttribute("nil", "http://www.w3.org/2001/XMLSchema-instance") -eq "true") -and $fv.InnerText) {
-					Out "  Значение заполнения: $($fv.InnerText)"
+					$fvText = $fv.InnerText
+					if ($fvText -match '\.EmptyRef$') { $fvText = "Пустая ссылка" }
+					elseif ($fvText -eq "false") { $fvText = "Ложь" }
+					elseif ($fvText -eq "true") { $fvText = "Истина" }
+					Out "  Значение заполнения: $fvText"
 				} else {
 					Out "  Значение заполнения: —"
 				}
@@ -525,6 +560,22 @@ if (-not $drillDone) {
 			if ($parts.Count -gt 0) { Out ($parts -join " | ") }
 		}
 
+		# Constant-specific: show type
+		if ($mdType -eq "Constant") {
+			$typeStr = Format-Type $props.SelectSingleNode("md:Type", $ns)
+			if ($typeStr) { Out "Тип: $typeStr" }
+		}
+
+		# Report-specific: MainDataCompositionSchema
+		if ($mdType -eq "Report") {
+			$mainDCS = $props.SelectSingleNode("md:MainDataCompositionSchema", $ns)
+			if ($mainDCS -and $mainDCS.InnerText) {
+				$dcsName = $mainDCS.InnerText
+				if ($dcsName -match '\.Template\.(.+)$') { $dcsName = $Matches[1] }
+				Out "Основная СКД: $dcsName"
+			}
+		}
+
 		# --- Enum values ---
 		if ($mdType -eq "Enum" -and $childObjs) {
 			$vals = @()
@@ -574,8 +625,9 @@ if (-not $drillDone) {
 			if ($attrs.Count -gt 0) {
 				Out ""
 				Out "Реквизиты ($($attrs.Count)):"
-				$ml = Get-MaxNameLen $attrs
-				foreach ($a in $attrs) { Out (Format-AttrLine $a $ml) }
+				$sorted = Sort-AttrsRefFirst $attrs
+				$ml = Get-MaxNameLen $sorted
+				foreach ($a in $sorted) { Out (Format-AttrLine $a $ml) }
 			}
 		}
 
@@ -588,8 +640,9 @@ if (-not $drillDone) {
 						Out ""
 						Out "ТЧ $($ts.Name) ($($ts.ColCount) $(Decline-Cols $ts.ColCount)):"
 						if ($ts.ColCount -gt 0) {
-							$ml = Get-MaxNameLen $ts.Columns
-							foreach ($c in $ts.Columns) { Out (Format-AttrLine $c $ml) }
+							$sortedCols = Sort-AttrsRefFirst $ts.Columns
+							$ml = Get-MaxNameLen $sortedCols
+							foreach ($c in $sortedCols) { Out (Format-AttrLine $c $ml) }
 						}
 					}
 				} else {
@@ -599,6 +652,16 @@ if (-not $drillDone) {
 					Out "ТЧ ($($tss.Count)): $($tsParts -join ', ')"
 				}
 			}
+		}
+
+		# Forms/Templates/Commands in overview for Reports & DataProcessors
+		if ($Mode -eq "overview" -and $childObjs -and ($mdType -eq "Report" -or $mdType -eq "DataProcessor")) {
+			$forms = @(Get-SimpleChildren $childObjs "Form")
+			if ($forms.Count -gt 0) { Out "Формы: $($forms -join ', ')" }
+			$templates = @(Get-SimpleChildren $childObjs "Template")
+			if ($templates.Count -gt 0) { Out "Макеты: $($templates -join ', ')" }
+			$commands = @(Get-SimpleChildren $childObjs "Command")
+			if ($commands.Count -gt 0) { Out "Команды: $($commands -join ', ')" }
 		}
 
 		# --- Full mode: additional sections ---
@@ -670,7 +733,7 @@ if ($Limit -gt 0 -and $outLines.Count -gt $Limit) {
 	$shown = $outLines[0..($Limit - 1)]
 	$remaining = $totalLines - $Offset - $Limit
 	$shown += ""
-	$shown += "[TRUNCATED] Shown $Limit of $totalLines lines. Use -Offset $($Offset + $Limit) to continue."
+	$shown += "[ОБРЕЗАНО] Показано $Limit из $totalLines строк. Используйте -Offset $($Offset + $Limit) для продолжения."
 	$outLines = $shown
 }
 
