@@ -1,12 +1,12 @@
 # Meta DSL — спецификация JSON-формата для объектов метаданных 1С
 
-Версия: 1.0
+Версия: 2.0
 
 ## Обзор
 
 JSON DSL для описания объектов метаданных конфигурации 1С. Компактный формат компилируется в полноценный XML, совместимый с выгрузкой конфигурации 1С:Предприятие 8.3.
 
-Поддерживаемые типы (Фаза 1): **Catalog**, **Document**, **Enum**, **Constant**, **InformationRegister**, **AccumulationRegister**.
+Поддерживаемые типы (23): **Catalog**, **Document**, **Enum**, **Constant**, **InformationRegister**, **AccumulationRegister**, **AccountingRegister**, **CalculationRegister**, **ChartOfAccounts**, **ChartOfCharacteristicTypes**, **ChartOfCalculationTypes**, **BusinessProcess**, **Task**, **ExchangePlan**, **DocumentJournal**, **Report**, **DataProcessor**, **CommonModule**, **ScheduledJob**, **EventSubscription**, **HTTPService**, **WebService**, **DefinedType**.
 
 ---
 
@@ -76,6 +76,11 @@ JSON DSL для описания объектов метаданных конф�
 | `DocumentRef.Xxx` | `cfg:DocumentRef.Xxx` |
 | `EnumRef.Xxx` | `cfg:EnumRef.Xxx` |
 | `ChartOfAccountsRef.Xxx` | `cfg:ChartOfAccountsRef.Xxx` |
+| `ChartOfCharacteristicTypesRef.Xxx` | `cfg:ChartOfCharacteristicTypesRef.Xxx` |
+| `ChartOfCalculationTypesRef.Xxx` | `cfg:ChartOfCalculationTypesRef.Xxx` |
+| `ExchangePlanRef.Xxx` | `cfg:ExchangePlanRef.Xxx` |
+| `BusinessProcessRef.Xxx` | `cfg:BusinessProcessRef.Xxx` |
+| `TaskRef.Xxx` | `cfg:TaskRef.Xxx` |
 | `DefinedType.Xxx` | `cfg:DefinedType.Xxx` (через `v8:TypeSet`) |
 
 ### 3.3 Русские синонимы типов
@@ -91,6 +96,11 @@ JSON DSL для описания объектов метаданных конф�
 | `ДокументСсылка.Xxx` | `DocumentRef.Xxx` |
 | `ПеречислениеСсылка.Xxx` | `EnumRef.Xxx` |
 | `ПланСчетовСсылка.Xxx` | `ChartOfAccountsRef.Xxx` |
+| `ПланВидовХарактеристикСсылка.Xxx` | `ChartOfCharacteristicTypesRef.Xxx` |
+| `ПланВидовРасчётаСсылка.Xxx` | `ChartOfCalculationTypesRef.Xxx` |
+| `ПланОбменаСсылка.Xxx` | `ExchangePlanRef.Xxx` |
+| `БизнесПроцессСсылка.Xxx` | `BusinessProcessRef.Xxx` |
+| `ЗадачаСсылка.Xxx` | `TaskRef.Xxx` |
 | `ОпределяемыйТип.Xxx` | `DefinedType.Xxx` |
 
 Регистронезависимые.
@@ -139,7 +149,7 @@ JSON DSL для описания объектов метаданных конф�
 
 ## 5. Табличные части
 
-Только для Catalog и Document.
+Для типов с ChildObjects → TabularSection: Catalog, Document, ExchangePlan, ChartOfCharacteristicTypes, ChartOfCalculationTypes, BusinessProcess, Task, Report, DataProcessor, ChartOfAccounts.
 
 ```json
 "tabularSections": {
@@ -156,6 +166,8 @@ JSON DSL для описания объектов метаданных конф�
 ```
 
 Ключ — имя табличной части, значение — массив реквизитов (в строковой или объектной форме).
+
+Для Catalog и Document добавляется `<Use>ForItem</Use>` в Properties табличной части.
 
 ---
 
@@ -260,6 +272,399 @@ JSON DSL для описания объектов метаданных конф�
 | `resources` | `[]` | → Resource в ChildObjects |
 | `attributes` | `[]` | → Attribute в ChildObjects |
 
+### 7.7 DefinedType
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `valueTypes` | `[]` | Type (составной — массив `v8:Type`) |
+
+Без ChildObjects и модулей.
+
+```json
+{ "type": "DefinedType", "name": "ДенежныеСредства", "valueTypes": ["CatalogRef.БанковскиеСчета", "CatalogRef.Кассы"] }
+```
+
+### 7.8 CommonModule
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `context` | — | Шорткат (см. ниже) |
+| `global` | `false` | Global |
+| `server` | `false` | Server |
+| `serverCall` | `false` | ServerCall |
+| `clientManagedApplication` | `false` | ClientManagedApplication |
+| `clientOrdinaryApplication` | `false` | ClientOrdinaryApplication |
+| `externalConnection` | `false` | ExternalConnection |
+| `privileged` | `false` | Privileged |
+| `returnValuesReuse` | `DontUse` | ReturnValuesReuse |
+
+Шорткаты `context`:
+- `"server"` → Server=true, ServerCall=true
+- `"client"` → ClientManagedApplication=true
+- `"serverClient"` → Server=true, ClientManagedApplication=true
+
+Модуль: `Ext/Module.bsl` (пустой).
+
+```json
+{ "type": "CommonModule", "name": "ОбменДаннымиСервер", "context": "server", "returnValuesReuse": "DuringRequest" }
+```
+
+### 7.9 ScheduledJob
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `methodName` | `""` | MethodName |
+| `description` | = synonym | Description |
+| `key` | `""` | Key |
+| `use` | `false` | Use |
+| `predefined` | `false` | Predefined |
+| `restartCountOnFailure` | `3` | RestartCountOnFailure |
+| `restartIntervalOnFailure` | `10` | RestartIntervalOnFailure |
+
+Без ChildObjects и модулей.
+
+```json
+{ "type": "ScheduledJob", "name": "ОбменДанными", "methodName": "ОбменДаннымиСервер.Выполнить", "use": true }
+```
+
+### 7.10 EventSubscription
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `source` | `[]` | Source (массив `v8:Type`, формат `cfg:XxxObject.Name`) |
+| `event` | `BeforeWrite` | Event |
+| `handler` | `""` | Handler |
+
+Без ChildObjects и модулей.
+
+Значения `event`: `BeforeWrite`, `OnWrite`, `BeforeDelete`, `OnReadAtServer`, `FillCheckProcessing` и др.
+
+```json
+{ "type": "EventSubscription", "name": "ПередЗаписьюКонтрагента", "source": ["CatalogObject.Контрагенты"], "event": "BeforeWrite", "handler": "ОбщегоНазначенияСервер.ПередЗаписьюКонтрагента" }
+```
+
+### 7.11 Report
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `defaultForm` | `""` | DefaultForm |
+| `auxiliaryForm` | `""` | AuxiliaryForm |
+| `mainDataCompositionSchema` | `""` | MainDataCompositionSchema |
+| `defaultSettingsForm` | `""` | DefaultSettingsForm |
+| `auxiliarySettingsForm` | `""` | AuxiliarySettingsForm |
+| `defaultVariantForm` | `""` | DefaultVariantForm |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+
+```json
+{ "type": "Report", "name": "ОстаткиТоваров", "attributes": ["НачалоПериода: Date", "КонецПериода: Date"] }
+```
+
+### 7.12 DataProcessor
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `defaultForm` | `""` | DefaultForm |
+| `auxiliaryForm` | `""` | AuxiliaryForm |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+
+```json
+{ "type": "DataProcessor", "name": "ЗагрузкаДанных", "attributes": ["ПутьКФайлу: String(500)"] }
+```
+
+### 7.13 ExchangePlan
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `codeLength` | `9` | CodeLength |
+| `codeType` | `String` | CodeType |
+| `codeAllowedLength` | `Variable` | CodeAllowedLength |
+| `descriptionLength` | `100` | DescriptionLength |
+| `autonumbering` | `true` | Autonumbering |
+| `checkUnique` | `false` | CheckUnique |
+| `distributedInfoBase` | `false` | DistributedInfoBase |
+| `includeConfigurationExtensions` | `false` | IncludeConfigurationExtensions |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+Дополнительно: `Ext/Content.xml` (пустой шаблон).
+
+```json
+{ "type": "ExchangePlan", "name": "ОбменССайтом", "attributes": ["АдресСервера: String(200)"] }
+```
+
+### 7.14 ChartOfCharacteristicTypes
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `codeLength` | `9` | CodeLength |
+| `codeType` | `String` | CodeType |
+| `codeAllowedLength` | `Variable` | CodeAllowedLength |
+| `descriptionLength` | `25` | DescriptionLength |
+| `autonumbering` | `true` | Autonumbering |
+| `checkUnique` | `false` | CheckUnique |
+| `characteristicExtValues` | `""` | CharacteristicExtValues |
+| `valueTypes` | авто* | Type (составной тип значений характеристик) |
+| `hierarchical` | `false` | Hierarchical |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+\* Если `valueTypes` не указан, по умолчанию: Boolean, String, Number(15,2), DateTime.
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+
+```json
+{
+  "type": "ChartOfCharacteristicTypes", "name": "ВидыСубконто",
+  "valueTypes": ["CatalogRef.Номенклатура", "CatalogRef.Контрагенты", "Boolean", "String", "Number(15,2)"]
+}
+```
+
+### 7.15 DocumentJournal
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `defaultForm` | `""` | DefaultForm |
+| `auxiliaryForm` | `""` | AuxiliaryForm |
+| `registeredDocuments` | `[]` | RegisteredDocuments |
+| `columns` | `[]` | → Column в ChildObjects |
+
+Без модулей.
+
+DSL для `registeredDocuments` — массив строк `"Document.ИмяДокумента"` (или русский `"Документ.ИмяДокумента"`).
+
+DSL для `columns` (§12).
+
+```json
+{
+  "type": "DocumentJournal", "name": "Взаимодействия",
+  "registeredDocuments": ["Document.Встреча", "Document.ТелефонныйЗвонок"],
+  "columns": [{ "name": "Организация", "indexing": "Index", "references": ["Document.Встреча.Attribute.Организация"] }]
+}
+```
+
+### 7.16 ChartOfAccounts
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `extDimensionTypes` | `""` | ExtDimensionTypes (ссылка на ПВХ) |
+| `maxExtDimensionCount` | `3` | MaxExtDimensionCount |
+| `codeMask` | `""` | CodeMask |
+| `codeLength` | `8` | CodeLength |
+| `descriptionLength` | `120` | DescriptionLength |
+| `codeSeries` | `WholeChartOfAccounts` | CodeSeries |
+| `autoOrderByCode` | `true` | AutoOrderByCode |
+| `orderLength` | `5` | OrderLength |
+| `hierarchical` | `false` | Hierarchical |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `accountingFlags` | `[]` | → AccountingFlag в ChildObjects (§13) |
+| `extDimensionAccountingFlags` | `[]` | → ExtDimensionAccountingFlag в ChildObjects (§14) |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+
+```json
+{
+  "type": "ChartOfAccounts", "name": "Хозрасчетный",
+  "extDimensionTypes": "ChartOfCharacteristicTypes.ВидыСубконто", "maxExtDimensionCount": 3,
+  "codeMask": "@@@.@@.@", "codeLength": 8,
+  "accountingFlags": ["Валютный", "Количественный"],
+  "extDimensionAccountingFlags": ["Суммовой", "Валютный"]
+}
+```
+
+### 7.17 AccountingRegister
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `chartOfAccounts` | `""` | ChartOfAccounts (ссылка на план счетов) |
+| `correspondence` | `false` | Correspondence |
+| `periodAdjustmentLength` | `0` | PeriodAdjustmentLength |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `dimensions` | `[]` | → Dimension в ChildObjects |
+| `resources` | `[]` | → Resource в ChildObjects |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+
+Модули: `Ext/RecordSetModule.bsl` (пустой).
+
+```json
+{
+  "type": "AccountingRegister", "name": "Хозрасчетный",
+  "chartOfAccounts": "ChartOfAccounts.Хозрасчетный", "correspondence": true,
+  "dimensions": ["Организация: CatalogRef.Организации"],
+  "resources": ["Сумма: Number(15,2)"]
+}
+```
+
+### 7.18 ChartOfCalculationTypes
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `codeLength` | `9` | CodeLength |
+| `codeType` | `String` | CodeType |
+| `codeAllowedLength` | `Variable` | CodeAllowedLength |
+| `descriptionLength` | `25` | DescriptionLength |
+| `autonumbering` | `true` | Autonumbering |
+| `checkUnique` | `false` | CheckUnique |
+| `dependenceOnCalculationTypes` | `NotUsed` | DependenceOnCalculationTypes |
+| `baseCalculationTypes` | `[]` | BaseCalculationTypes |
+| `actionPeriodUse` | `false` | ActionPeriodUse |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+Значения `dependenceOnCalculationTypes`: `NotUsed`, `ExclusionAndDependence`, `ExclusionOnly`.
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+
+```json
+{
+  "type": "ChartOfCalculationTypes", "name": "Начисления",
+  "dependenceOnCalculationTypes": "ExclusionAndDependence",
+  "actionPeriodUse": true
+}
+```
+
+### 7.19 CalculationRegister
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `chartOfCalculationTypes` | `""` | ChartOfCalculationTypes (ссылка на ПВР) |
+| `periodicity` | `Month` | Periodicity |
+| `actionPeriod` | `false` | ActionPeriod |
+| `basePeriod` | `false` | BasePeriod |
+| `schedule` | `""` | Schedule (ссылка на РС графиков) |
+| `scheduleValue` | `""` | ScheduleValue |
+| `scheduleDate` | `""` | ScheduleDate |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `dimensions` | `[]` | → Dimension в ChildObjects |
+| `resources` | `[]` | → Resource в ChildObjects |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+
+Модули: `Ext/RecordSetModule.bsl` (пустой).
+
+```json
+{
+  "type": "CalculationRegister", "name": "Начисления",
+  "chartOfCalculationTypes": "ChartOfCalculationTypes.Начисления",
+  "periodicity": "Month", "actionPeriod": true, "basePeriod": true,
+  "dimensions": ["Сотрудник: CatalogRef.Сотрудники"],
+  "resources": ["Сумма: Number(15,2)", "Дни: Number(3,0)"]
+}
+```
+
+### 7.20 BusinessProcess
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `editType` | `InDialog` | EditType |
+| `numberType` | `String` | NumberType |
+| `numberLength` | `11` | NumberLength |
+| `numberAllowedLength` | `Variable` | NumberAllowedLength |
+| `checkUnique` | `true` | CheckUnique |
+| `autonumbering` | `true` | Autonumbering |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+Дополнительно: `Ext/Flowchart.xml` (заглушка карты маршрута).
+
+```json
+{ "type": "BusinessProcess", "name": "Задание", "attributes": ["Описание: String(200)"] }
+```
+
+### 7.21 Task
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `numberType` | `String` | NumberType |
+| `numberLength` | `14` | NumberLength |
+| `numberAllowedLength` | `Variable` | NumberAllowedLength |
+| `checkUnique` | `true` | CheckUnique |
+| `autonumbering` | `true` | Autonumbering |
+| `taskNumberAutoPrefix` | `BusinessProcessNumber` | TaskNumberAutoPrefix |
+| `descriptionLength` | `150` | DescriptionLength |
+| `addressing` | `""` | Addressing (ссылка на РС адресации) |
+| `mainAddressingAttribute` | `""` | MainAddressingAttribute |
+| `currentPerformer` | `""` | CurrentPerformer |
+| `dataLockControlMode` | `Automatic` | DataLockControlMode |
+| `fullTextSearch` | `Use` | FullTextSearch |
+| `attributes` | `[]` | → Attribute в ChildObjects |
+| `tabularSections` | `{}` | → TabularSection в ChildObjects |
+| `addressingAttributes` | `[]` | → AddressingAttribute в ChildObjects (§15) |
+
+Модули: `Ext/ObjectModule.bsl` (пустой).
+
+```json
+{
+  "type": "Task", "name": "ЗадачаИсполнителя", "descriptionLength": 200,
+  "addressing": "InformationRegister.АдресацияЗадач",
+  "addressingAttributes": [{ "name": "Исполнитель", "type": "CatalogRef.Пользователи", "addressingDimension": "InformationRegister.АдресацияЗадач.Dimension.Исполнитель" }]
+}
+```
+
+### 7.22 HTTPService
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `rootURL` | = имя (lowercase) | RootURL |
+| `reuseSessions` | `DontUse` | ReuseSessions |
+| `sessionMaxAge` | `20` | SessionMaxAge |
+| `urlTemplates` | `{}` | → URLTemplate в ChildObjects (§16) |
+
+Модули: `Ext/Module.bsl` (пустой).
+
+```json
+{
+  "type": "HTTPService", "name": "API", "rootURL": "api",
+  "urlTemplates": {
+    "Users": { "template": "/v1/users", "methods": { "Get": "GET", "Create": "POST" } }
+  }
+}
+```
+
+### 7.23 WebService
+
+| Поле JSON | Умолчание | XML элемент |
+|-----------|----------|-------------|
+| `namespace` | `""` | Namespace |
+| `xdtoPackages` | `""` | XDTOPackages |
+| `reuseSessions` | `DontUse` | ReuseSessions |
+| `sessionMaxAge` | `20` | SessionMaxAge |
+| `operations` | `{}` | → Operation в ChildObjects (§17) |
+
+Модули: `Ext/Module.bsl` (пустой).
+
+```json
+{
+  "type": "WebService", "name": "DataExchange", "namespace": "http://www.1c.ru/DataExchange",
+  "operations": {
+    "TestConnection": {
+      "returnType": "xs:boolean",
+      "handler": "ПроверкаПодключения",
+      "parameters": { "ErrorMessage": { "type": "xs:string", "direction": "Out" } }
+    }
+  }
+}
+```
+
 ---
 
 ## 8. Русские синонимы типов объектов
@@ -272,6 +677,23 @@ JSON DSL для описания объектов метаданных конф�
 | `Константа` | `Constant` |
 | `РегистрСведений` | `InformationRegister` |
 | `РегистрНакопления` | `AccumulationRegister` |
+| `РегистрБухгалтерии` | `AccountingRegister` |
+| `РегистрРасчёта` | `CalculationRegister` |
+| `ПланСчетов` | `ChartOfAccounts` |
+| `ПланВидовХарактеристик` | `ChartOfCharacteristicTypes` |
+| `ПланВидовРасчёта` | `ChartOfCalculationTypes` |
+| `БизнесПроцесс` | `BusinessProcess` |
+| `Задача` | `Task` |
+| `ПланОбмена` | `ExchangePlan` |
+| `ЖурналДокументов` | `DocumentJournal` |
+| `Отчёт` | `Report` |
+| `Обработка` | `DataProcessor` |
+| `ОбщийМодуль` | `CommonModule` |
+| `РегламентноеЗадание` | `ScheduledJob` |
+| `ПодпискаНаСобытие` | `EventSubscription` |
+| `HTTPСервис` | `HTTPService` |
+| `ВебСервис` | `WebService` |
+| `ОпределяемыйТип` | `DefinedType` |
 
 ---
 
@@ -311,6 +733,8 @@ JSON DSL для описания объектов метаданных конф�
 ```
 
 Флаг `useInTotals` — только для измерений AccumulationRegister (по умолчанию `true`).
+
+Применимо к: InformationRegister, AccumulationRegister, AccountingRegister, CalculationRegister.
 
 ---
 
@@ -410,3 +834,252 @@ JSON DSL для описания объектов метаданных конф�
   ]
 }
 ```
+
+### Определяемый тип
+
+```json
+{ "type": "DefinedType", "name": "ДенежныеСредства", "valueTypes": ["CatalogRef.БанковскиеСчета", "CatalogRef.Кассы"] }
+```
+
+### Общий модуль
+
+```json
+{ "type": "CommonModule", "name": "ОбменДаннымиСервер", "context": "server", "returnValuesReuse": "DuringRequest" }
+```
+
+### План обмена
+
+```json
+{ "type": "ExchangePlan", "name": "ОбменССайтом", "attributes": ["АдресСервера: String(200)"] }
+```
+
+### Журнал документов
+
+```json
+{
+  "type": "DocumentJournal", "name": "Взаимодействия",
+  "registeredDocuments": ["Document.Встреча", "Document.ТелефонныйЗвонок"],
+  "columns": [{ "name": "Организация", "indexing": "Index", "references": ["Document.Встреча.Attribute.Организация"] }]
+}
+```
+
+### План счетов
+
+```json
+{
+  "type": "ChartOfAccounts", "name": "Хозрасчетный",
+  "extDimensionTypes": "ChartOfCharacteristicTypes.ВидыСубконто", "maxExtDimensionCount": 3,
+  "codeMask": "@@@.@@.@", "codeLength": 8,
+  "accountingFlags": ["Валютный", "Количественный"],
+  "extDimensionAccountingFlags": ["Суммовой", "Валютный"]
+}
+```
+
+### HTTP-сервис
+
+```json
+{
+  "type": "HTTPService", "name": "API", "rootURL": "api",
+  "urlTemplates": {
+    "Users": { "template": "/v1/users", "methods": { "Get": "GET", "Create": "POST" } }
+  }
+}
+```
+
+### Веб-сервис
+
+```json
+{
+  "type": "WebService", "name": "DataExchange", "namespace": "http://www.1c.ru/DataExchange",
+  "operations": {
+    "TestConnection": {
+      "returnType": "xs:boolean",
+      "handler": "ПроверкаПодключения",
+      "parameters": { "ErrorMessage": { "type": "xs:string", "direction": "Out" } }
+    }
+  }
+}
+```
+
+### Бизнес-процесс
+
+```json
+{ "type": "BusinessProcess", "name": "Задание", "attributes": ["Описание: String(200)"] }
+```
+
+### Задача
+
+```json
+{
+  "type": "Task", "name": "ЗадачаИсполнителя", "descriptionLength": 200,
+  "addressing": "InformationRegister.АдресацияЗадач",
+  "addressingAttributes": [{ "name": "Исполнитель", "type": "CatalogRef.Пользователи" }]
+}
+```
+
+---
+
+## 12. Графы журнала документов (columns)
+
+Только для DocumentJournal.
+
+### Строковая форма
+
+```json
+"columns": ["Организация", "Контрагент"]
+```
+
+Создаёт графу без ссылок, без индексации.
+
+### Объектная форма
+
+```json
+"columns": [
+  {
+    "name": "Организация",
+    "synonym": "Организация",
+    "indexing": "Index",
+    "references": [
+      "Document.Встреча.Attribute.Организация",
+      "Document.ТелефонныйЗвонок.Attribute.Организация"
+    ]
+  }
+]
+```
+
+| Поле | Умолчание | Описание |
+|------|----------|----------|
+| `name` | — | Имя графы (обязательное) |
+| `synonym` | авто | Синоним |
+| `indexing` | `DontIndex` | `DontIndex` / `Index` |
+| `references` | `[]` | Ссылки на реквизиты регистрируемых документов |
+
+---
+
+## 13. Признаки учёта (accountingFlags)
+
+Только для ChartOfAccounts.
+
+```json
+"accountingFlags": ["Валютный", "Количественный"]
+```
+
+Массив имён. Каждый признак — Boolean-тип. Синоним авто из CamelCase.
+
+---
+
+## 14. Признаки учёта субконто (extDimensionAccountingFlags)
+
+Только для ChartOfAccounts.
+
+```json
+"extDimensionAccountingFlags": ["Суммовой", "Валютный"]
+```
+
+Аналогично accountingFlags, но применяется к субконто (ExtDimensionTypes).
+
+---
+
+## 15. Реквизиты адресации (addressingAttributes)
+
+Только для Task.
+
+### Строковая форма
+
+```json
+"addressingAttributes": ["Исполнитель"]
+```
+
+### Объектная форма
+
+```json
+"addressingAttributes": [
+  {
+    "name": "Исполнитель",
+    "type": "CatalogRef.Пользователи",
+    "addressingDimension": "InformationRegister.АдресацияЗадач.Dimension.Исполнитель"
+  }
+]
+```
+
+| Поле | Умолчание | Описание |
+|------|----------|----------|
+| `name` | — | Имя реквизита (обязательное) |
+| `type` | `String` | Тип значения |
+| `synonym` | авто | Синоним |
+| `addressingDimension` | `""` | Ссылка на измерение регистра адресации |
+
+---
+
+## 16. URL-шаблоны HTTP-сервиса (urlTemplates)
+
+Только для HTTPService.
+
+```json
+"urlTemplates": {
+  "Users": {
+    "template": "/v1/users",
+    "methods": {
+      "Get": "GET",
+      "Create": "POST"
+    }
+  }
+}
+```
+
+Ключ — имя шаблона. Значение — объект:
+
+| Поле | Умолчание | Описание |
+|------|----------|----------|
+| `template` | `/{name}` | URL-шаблон (строка) |
+| `methods` | `{}` | Имя метода → HTTP-метод (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`) |
+
+Обработчик метода авто: `{TemplateName}{MethodName}` (напр. `UsersGet`).
+
+Если значение — строка, интерпретируется как `template` без методов.
+
+---
+
+## 17. Операции веб-сервиса (operations)
+
+Только для WebService.
+
+```json
+"operations": {
+  "TestConnection": {
+    "returnType": "xs:boolean",
+    "handler": "ПроверкаПодключения",
+    "nillable": false,
+    "transactioned": false,
+    "parameters": {
+      "ErrorMessage": {
+        "type": "xs:string",
+        "nillable": true,
+        "direction": "Out"
+      }
+    }
+  }
+}
+```
+
+Ключ — имя операции. Значение — объект:
+
+| Поле | Умолчание | Описание |
+|------|----------|----------|
+| `returnType` | `xs:string` | XDTO-тип возвращаемого значения |
+| `handler` | = имя операции | Имя процедуры-обработчика |
+| `nillable` | `false` | Может ли возвращать null |
+| `transactioned` | `false` | Выполняется в транзакции |
+| `parameters` | `{}` | Параметры операции |
+
+Если значение — строка, интерпретируется как `returnType`.
+
+### Параметры операции
+
+| Поле | Умолчание | Описание |
+|------|----------|----------|
+| `type` | `xs:string` | XDTO-тип параметра |
+| `nillable` | `true` | Может ли быть null |
+| `direction` | `In` | Направление: `In` / `Out` / `InOut` |
+
+Если значение — строка, интерпретируется как `type`.
