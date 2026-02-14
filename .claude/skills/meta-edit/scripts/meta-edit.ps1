@@ -1,4 +1,4 @@
-﻿# meta-edit v1.2 — Edit existing 1C metadata object XML (inline mode + complex properties + TS attribute ops)
+﻿# meta-edit v1.3 — Edit existing 1C metadata object XML (inline mode + complex properties + TS attribute ops + modify-ts)
 # Source: https://github.com/Nikolay-Shirokov/cc-1c-skills
 param(
 	[string]$DefinitionFile,
@@ -14,7 +14,7 @@ param(
 		"remove-attribute", "remove-ts", "remove-dimension", "remove-resource",
 		"remove-enumValue", "remove-column", "remove-form", "remove-template", "remove-command",
 		"remove-owner", "remove-registerRecord", "remove-basedOn", "remove-inputByString",
-		"add-ts-attribute", "remove-ts-attribute", "modify-ts-attribute",
+		"add-ts-attribute", "remove-ts-attribute", "modify-ts-attribute", "modify-ts",
 		"modify-attribute", "modify-dimension", "modify-resource",
 		"modify-enumValue", "modify-column",
 		"modify-property",
@@ -1818,8 +1818,12 @@ function Modify-ChildElements($modifyDef, [string]$childType) {
 							$tsAttrIndent = Get-ChildIndent $tsChildObjEl
 							$fragmentXml = Build-AttributeFragment $parsed "tabular" $tsAttrIndent
 							$nodes = Import-Fragment $fragmentXml
+							$savedCO = $script:childObjectsEl
+							$script:childObjectsEl = $tsChildObjEl
+							$refNode = Find-InsertionPoint "Attribute" $parsed
+							$script:childObjectsEl = $savedCO
 							foreach ($node in $nodes) {
-								Insert-BeforeElement $tsChildObjEl $node $null $tsAttrIndent
+								Insert-BeforeElement $tsChildObjEl $node $refNode $tsAttrIndent
 							}
 							Info "Added attribute to TS '$elemName': $($parsed.name)"
 							$script:addCount++
