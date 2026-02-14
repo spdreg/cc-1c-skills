@@ -5,7 +5,10 @@
 
 Источники: выгрузки ERP 2, Бухгалтерия предприятия (платформы 8.3.20, 8.3.24, 8.3.27).
 
-> **Связанные спецификации**: Подсистемы и командный интерфейс — [1c-subsystem-spec.md](1c-subsystem-spec.md).
+> **Связанные спецификации:**
+> - Корневая структура конфигурации — [1c-configuration-spec.md](1c-configuration-spec.md)
+> - Подсистемы и командный интерфейс — [1c-subsystem-spec.md](1c-subsystem-spec.md)
+> - Сводный индекс — [1c-specs-index.md](1c-specs-index.md)
 
 ---
 
