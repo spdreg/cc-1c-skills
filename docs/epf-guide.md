@@ -1,23 +1,42 @@
-# Внешние обработки (EPF)
+# Внешние обработки и отчёты (EPF / ERF)
 
-Навыки группы `/epf-*` позволяют создавать, модифицировать и собирать внешние обработки 1С:Предприятия 8.3 (`.epf`) из XML-исходников, не запоминая детали формата.
+Навыки для создания, модификации и сборки внешних обработок (`.epf`) и внешних отчётов (`.erf`) 1С:Предприятия 8.3 из XML-исходников.
 
-## Навыки
+## Навыки обработок (EPF)
 
 | Навык | Параметры | Описание |
 |-------|-----------|----------|
 | `/epf-init` | `<Name> [Synonym]` | Создать новую обработку (корневой XML + модуль объекта) |
-| `/epf-add-form` | `<ProcessorName> <FormName> [Synonym]` | Добавить управляемую форму |
-| `/epf-add-template` | `<ProcessorName> <TemplateName> <TemplateType>` | Добавить макет (HTML, Text, SpreadsheetDocument, BinaryData) |
-| `/epf-add-help` | `<ProcessorName>` | Добавить встроенную справку (Help.xml + HTML) |
-| `/epf-remove-form` | `<ProcessorName> <FormName>` | Удалить форму |
-| `/epf-remove-template` | `<ProcessorName> <TemplateName>` | Удалить макет |
+| `/epf-add-form` | `<ProcessorName> <FormName> [Synonym]` | Добавить управляемую форму к обработке |
 | `/epf-build` | `<ProcessorName>` | Собрать EPF из XML (через 1cv8.exe) |
 | `/epf-dump` | `<EpfFile>` | Разобрать EPF в XML (через 1cv8.exe) |
 | `/epf-bsp-init` | `<ProcessorName> <Вид>` | Добавить регистрацию БСП (СведенияОВнешнейОбработке) |
 | `/epf-bsp-add-command` | `<ProcessorName> <Идентификатор>` | Добавить команду в дополнительную обработку БСП |
 
-Навыки удаления (`epf-remove-*`) не вызываются Claude автоматически — только по явной команде пользователя.
+## Внешние отчёты (ERF)
+
+| Навык | Параметры | Описание |
+|-------|-----------|----------|
+| `/erf-init` | `<ReportName> [Synonym] [--WithSKD]` | Создать новый отчёт (корневой XML + модуль объекта + опционально СКД) |
+| `/erf-build` | `<ReportName>` | Собрать ERF из XML (через 1cv8.exe) |
+| `/erf-dump` | `<ErfFile>` | Разобрать ERF в XML (через 1cv8.exe) |
+
+Флаг `--WithSKD` создаёт макет `ОсновнаяСхемаКомпоновкиДанных` и привязывает его к `MainDataCompositionSchema`.
+
+## Универсальные навыки
+
+Работают с любыми объектами — обработками, отчётами, справочниками, документами и др.
+
+| Навык | Параметры | Описание |
+|-------|-----------|----------|
+| `/template-add` | `<ObjectName> <TemplateName> <TemplateType>` | Добавить макет (HTML, Text, SpreadsheetDocument, BinaryData, DataCompositionSchema) |
+| `/template-remove` | `<ObjectName> <TemplateName>` | Удалить макет |
+| `/help-add` | `<ObjectName>` | Добавить встроенную справку (Help.xml + HTML) |
+| `/form-remove` | `<ObjectName> <FormName>` | Удалить форму |
+
+Для отчётов: при добавлении макета типа DataCompositionSchema автоматически заполняется `MainDataCompositionSchema` (если пуст).
+
+Навыки удаления (`template-remove`, `form-remove`) не вызываются Claude автоматически — только по явной команде пользователя.
 
 ## Сценарии использования
 
@@ -43,13 +62,21 @@ Claude выполнит `/epf-init` и `/epf-add-form` с правильными
 
 Claude создаст обработку, добавит макет SpreadsheetDocument, вызовет `/epf-bsp-init` с видом ПечатнаяФорма и назначением, сгенерирует `СведенияОВнешнейОбработке()` и процедуру `Печать()`.
 
+### Внешний отчёт с СКД
+
+```
+> Создай внешний отчёт ОстаткиНаСкладе с СКД
+```
+
+Claude выполнит `/erf-init ОстаткиНаСкладе --WithSKD`, затем предложит заполнить схему компоновки через `/skd-compile`.
+
 ### Доработка существующей обработки
 
 ```
 > Добавь справку с описанием как пользоваться обработкой
 ```
 
-Claude вызовет `/epf-add-help` и предложит отредактировать HTML.
+Claude вызовет `/help-add` и предложит отредактировать HTML.
 
 ```
 > Добавь ещё одну команду печати — накладная
@@ -61,7 +88,7 @@ Claude вызовет `/epf-bsp-add-command`, добавит команду в `
 > Собери
 ```
 
-Claude вызовет `/epf-build`.
+Claude вызовет `/epf-build` или `/erf-build` в зависимости от типа объекта.
 
 ### Примеры слеш-команд
 
@@ -70,9 +97,13 @@ Claude вызовет `/epf-build`.
 ```
 > /epf-init МояОбработка "Моя обработка"
 > /epf-add-form МояОбработка Форма
-> /epf-add-template МояОбработка Макет HTML
-> /epf-add-help МояОбработка
+> /template-add МояОбработка Макет HTML
+> /help-add МояОбработка
 > /epf-build МояОбработка
+
+> /erf-init МойОтчёт --WithSKD
+> /template-add МойОтчёт ДопМакет SpreadsheetDocument
+> /erf-build МойОтчёт
 ```
 
 ## Структура каталогов
@@ -87,7 +118,7 @@ src/
         └── ObjectModule.bsl                  # Модуль объекта
 ```
 
-После `/epf-add-form` и `/epf-add-template`:
+После `/epf-add-form` и `/template-add`:
 
 ```
 src/
@@ -109,6 +140,21 @@ src/
                 └── Template.html             # Содержимое макета
 ```
 
+После `/erf-init МойОтчёт --WithSKD`:
+
+```
+src/
+├── МойОтчёт.xml                              # Корневой файл (ExternalReport)
+└── МойОтчёт/
+    ├── Ext/
+    │   └── ObjectModule.bsl                  # Модуль объекта
+    └── Templates/
+        ├── ОсновнаяСхемаКомпоновкиДанных.xml
+        └── ОсновнаяСхемаКомпоновкиДанных/
+            └── Ext/
+                └── Template.xml              # Пустая СКД
+```
+
 Первая добавленная форма автоматически становится основной (DefaultForm). Флаг `--main` нужен только для переназначения основной формы на другую.
 
 ## Технические детали
@@ -116,13 +162,16 @@ src/
 - Все XML-файлы создаются в **UTF-8 с BOM** (как в реальных выгрузках 1С)
 - PowerShell-скрипты используют `System.Xml.XmlDocument` для модификации корневого XML
 - UUID генерируются через `[guid]::NewGuid()`
-- ClassId обработки фиксирован: `c3831ec8-d8d5-4f93-8a22-f9bfae07327f`
+- ClassId обработки: `c3831ec8-d8d5-4f93-8a22-f9bfae07327f`
+- ClassId отчёта: `e41aff26-25cf-4bb6-b6c1-3f478a75f374`
 - Порядок элементов в `ChildObjects`: TabularSections → Forms → Templates
 - Первая форма автоматически назначается основной (DefaultForm)
 - Навыки БСП (`epf-bsp-*`) не используют скрипты — Claude модифицирует код напрямую через Read/Edit
+- Для отчётов: `/template-add` с типом DataCompositionSchema автоматически заполняет `MainDataCompositionSchema`
 
 ## Спецификации
 
 - [XML-формат выгрузки обработок](1c-xml-format-spec.md) — структура XML-файлов, namespace, элементы форм
+- [XML-формат внешних отчётов](1c-erf-spec.md) — отличия ERF от EPF, Properties, MainDataCompositionSchema
 - [Встроенная справка](1c-help-spec.md) — Help.xml, HTML-страницы, кнопка справки на форме
-- [Сборка и разборка EPF](build-spec.md) — команды `1cv8.exe`, параметры, коды возврата
+- [Сборка и разборка EPF/ERF](build-spec.md) — команды `1cv8.exe`, параметры, коды возврата
