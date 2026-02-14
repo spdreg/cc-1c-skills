@@ -11,17 +11,17 @@ allowed-tools:
 
 # /meta-edit — точечное редактирование метаданных 1С
 
-Атомарные операции модификации существующих XML объектов метаданных: добавление, удаление и модификация реквизитов, табличных частей, измерений, ресурсов, значений перечислений, свойств объекта, владельцев, движений по регистрам, оснований, ввода по строке.
+Атомарные операции модификации существующих XML объектов метаданных.
 
-## Два режима работы
+## Команда
 
-### Inline mode (рекомендуется для простых операций)
+### Inline mode (простые операции)
 
 ```powershell
 powershell.exe -NoProfile -File .claude\skills\meta-edit\scripts\meta-edit.ps1 -ObjectPath "<path>" -Operation <op> -Value "<val>"
 ```
 
-### JSON mode (для сложных/комбинированных операций)
+### JSON mode (сложные/комбинированные)
 
 ```powershell
 powershell.exe -NoProfile -File .claude\skills\meta-edit\scripts\meta-edit.ps1 -DefinitionFile "<json>" -ObjectPath "<path>"
@@ -29,344 +29,72 @@ powershell.exe -NoProfile -File .claude\skills\meta-edit\scripts\meta-edit.ps1 -
 
 | Параметр | Описание |
 |----------|----------|
-| ObjectPath | XML-файл или директория объекта (обязательный) |
+| ObjectPath | XML-файл или директория объекта (обязательный, авторезолв `<dirName>.xml`) |
 | Operation | Inline-операция (альтернатива DefinitionFile) |
 | Value | Значение для inline-операции |
 | DefinitionFile | JSON-файл с операциями (альтернатива Operation) |
 | NoValidate | Не запускать meta-validate после правки |
 
-`ObjectPath` авторезолв: если указана директория — ищет `<dirName>.xml` в ней.
+## Операции — сводная таблица
 
-## Inline mode — операции
+Batch через `;;` во всех операциях. Подробный синтаксис — в файлах по ссылкам.
 
-### Batch-режим
+### Дочерние элементы — [child-operations.md](child-operations.md)
 
-Несколько элементов через `;;`:
-```
--Value "Комментарий: Строка(200) ;; Сумма: Число(15,2) | index"
-```
+| Операция | Формат Value | Пример |
+|----------|-------------|--------|
+| `add-attribute` | `Имя: Тип \| флаги` | `"Сумма: Число(15,2) \| req, index"` |
+| `add-ts` | `ТЧ: Рекв1: Тип1, Рекв2: Тип2` | `"Товары: Ном: CatalogRef.Ном, Кол: Число(15,3)"` |
+| `add-dimension` | `Имя: Тип \| флаги` | `"Организация: CatalogRef.Организации \| master"` |
+| `add-resource` | `Имя: Тип` | `"Сумма: Число(15,2)"` |
+| `add-enumValue` | `Имя` | `"Значение1 ;; Значение2"` |
+| `add-column` | `Имя: Тип` | `"Тип: EnumRef.ТипыДокументов"` |
+| `add-form` / `add-template` / `add-command` | `Имя` | `"ФормаЭлемента"` |
+| `add-ts-attribute` | `ТЧ.Имя: Тип` | `"Товары.Скидка: Число(15,2)"` |
+| `remove-*` | `Имя` | `"СтарыйРеквизит ;; ЕщёОдин"` |
+| `remove-ts-attribute` | `ТЧ.Имя` | `"Товары.УстаревшийРекв"` |
+| `modify-attribute` | `Имя: ключ=значение` | `"СтароеИмя: name=НовоеИмя, type=Строка(500)"` |
+| `modify-ts-attribute` | `ТЧ.Имя: ключ=значение` | `"Товары.Рекв: name=НовоеИмя"` |
+| `modify-ts` | `ТЧ: ключ=значение` | `"Товары: synonym=Товарный состав"` |
 
-### add-attribute / add-dimension / add-resource / add-column
+Позиционная вставка: `"Склад: CatalogRef.Склады >> after Организация"`.
 
-Shorthand-формат: `Имя: Тип | флаги`
+### Свойства объекта — [properties-reference.md](properties-reference.md)
 
-```powershell
--Operation add-attribute -Value "Комментарий: Строка(200)"
--Operation add-attribute -Value "Сумма: Число(15,2) | req, index"
--Operation add-attribute -Value "Ном: CatalogRef.Номенклатура | req ;; Кол: Число(15,3)"
--Operation add-dimension -Value "Организация: CatalogRef.Организации | master, mainFilter"
-```
+| Операция | Формат Value | Пример |
+|----------|-------------|--------|
+| `modify-property` | `Ключ=Значение` | `"CodeLength=11 ;; DescriptionLength=150"` |
+| `add-owner` | `MetaType.Name` | `"Catalog.Контрагенты ;; Catalog.Организации"` |
+| `add-registerRecord` | `MetaType.Name` | `"AccumulationRegister.ОстаткиТоваров"` |
+| `add-basedOn` | `MetaType.Name` | `"Document.ЗаказКлиента"` |
+| `add-inputByString` | `Путь поля` | `"StandardAttribute.Description"` |
+| `set-owners` / `set-registerRecords` / `set-basedOn` / `set-inputByString` | Замена всего списка | `"Catalog.Орг ;; Catalog.Контр"` |
+| `remove-owner` / `remove-registerRecord` / ... | Удаление из списка | `"Catalog.Контрагенты"` |
 
-Позиционная вставка: `>> after ИмяЭлемента` или `<< before ИмяЭлемента`:
-```powershell
--Operation add-attribute -Value "Склад: CatalogRef.Склады >> after Организация"
-```
+### JSON DSL — [json-dsl.md](json-dsl.md)
 
-### add-ts
+Для комбинированных операций (add + remove + modify в одном файле), синонимы ключей/типов, таблица поддерживаемых объектов.
 
-Формат: `ИмяТЧ: Реквизит1: Тип1, Реквизит2: Тип2, ...`
-
-```powershell
--Operation add-ts -Value "Товары: Ном: CatalogRef.Ном | req, Кол: Число(15,3), Цена: Число(15,2), Сумма: Число(15,2)"
-```
-
-### add-ts-attribute / remove-ts-attribute / modify-ts-attribute
-
-Операции над реквизитами **внутри существующей табличной части**. Формат: `ИмяТЧ.ОпределениеРеквизита` (dot-нотация).
-
-```powershell
-# Добавить реквизит в ТЧ
--Operation add-ts-attribute -Value "Товары.СтавкаНДС: EnumRef.СтавкиНДС"
--Operation add-ts-attribute -Value "Товары.Скидка: Число(15,2) ;; Товары.Бонус: Число(15,2)"
-
-# Удалить реквизит из ТЧ
--Operation remove-ts-attribute -Value "Товары.УстаревшийРекв"
--Operation remove-ts-attribute -Value "Товары.Рекв1 ;; Товары.Рекв2"
-
-# Изменить реквизит в ТЧ (rename, type change и т.д.)
--Operation modify-ts-attribute -Value "Товары.СтароеИмя: name=НовоеИмя, type=Строка(500)"
-```
-
-Batch через `;;` — можно указать разные ТЧ: `"Товары.А: Строка(50) ;; Услуги.Б: Число(10)"`.
-
-Позиционная вставка в ТЧ: `>> after` / `<< before` работает так же, как и для обычных реквизитов:
-```powershell
--Operation add-ts-attribute -Value "Товары.Скидка: Число(15,2) >> after Цена"
-```
-
-### modify-ts
-
-Изменение свойств **самой табличной части** (Synonym, FillChecking, Use и др.):
+## Быстрые примеры
 
 ```powershell
--Operation modify-ts -Value "Товары: synonym=Товарный состав"
--Operation modify-ts -Value "Товары: fillChecking=ShowError"
-```
+# Добавить реквизиты
+-Operation add-attribute -Value "Комментарий: Строка(200) ;; Сумма: Число(15,2) | index"
 
-Формат аналогичен `modify-attribute`: `ИмяТЧ: ключ=значение, ключ=значение`.
-
-### add-enumValue / add-form / add-template / add-command
-
-Просто имена (batch через `;;`):
-```powershell
--Operation add-enumValue -Value "Значение1 ;; Значение2 ;; Значение3"
--Operation add-form -Value "ФормаЭлемента ;; ФормаСписка"
-```
-
-### add-owner / add-registerRecord / add-basedOn
-
-Полное имя метаданных `MetaType.Name`:
-```powershell
--Operation add-owner -Value "Catalog.Контрагенты ;; Catalog.Организации"
--Operation add-registerRecord -Value "AccumulationRegister.ОстаткиТоваров"
--Operation add-basedOn -Value "Document.ЗаказКлиента"
-```
-
-### add-inputByString
-
-Пути полей (префикс `MetaType.Name.` добавляется автоматически):
-```powershell
--Operation add-inputByString -Value "StandardAttribute.Description ;; StandardAttribute.Code"
-```
-
-### remove-*
-
-Имя элемента (или несколько через `;;`):
-```powershell
--Operation remove-attribute -Value "СтарыйРеквизит ;; ЕщёОдин"
--Operation remove-owner -Value "Catalog.Контрагенты"
--Operation remove-inputByString -Value "Catalog.МойСпр.StandardAttribute.Code"
-```
-
-### modify-attribute / modify-dimension / modify-resource / modify-enumValue / modify-column
-
-Формат: `ИмяЭлемента: ключ=значение, ключ=значение`
-
-Ключи: `name` (rename), `type`, `synonym`, `indexing`, `fillChecking`, `use` и др.
-
-```powershell
--Operation modify-attribute -Value "СтароеИмя: name=НовоеИмя, type=Строка(500)"
--Operation modify-attribute -Value "Комментарий: indexing=Index"
-```
-
-### modify-property
-
-Формат: `Ключ=Значение` (batch через `;;`):
-```powershell
--Operation modify-property -Value "CodeLength=11 ;; DescriptionLength=150"
--Operation modify-property -Value "Hierarchical=true"
-```
-
-### set-owners / set-registerRecords / set-basedOn / set-inputByString
-
-Заменяют **весь список** (в отличие от add/remove):
-```powershell
--Operation set-owners -Value "Catalog.Организации ;; Catalog.Контрагенты"
--Operation set-registerRecords -Value "AccumulationRegister.Продажи ;; AccumulationRegister.ОстаткиТоваров"
--Operation set-inputByString -Value "StandardAttribute.Description ;; StandardAttribute.Code"
-```
-
-## JSON DSL
-
-### add — добавить элементы
-
-```json
-{
-  "add": {
-    "реквизиты": [
-      { "name": "Комментарий", "type": "Строка(200)" },
-      { "name": "Сумма", "type": "Число(15,2)", "indexing": "Index" }
-    ],
-    "ТЧ": [{
-      "name": "Товары",
-      "attrs": [
-        { "name": "Номенклатура", "type": "CatalogRef.Номенклатура" },
-        { "name": "Количество", "type": "Число(15,3)" }
-      ]
-    }],
-    "формы": ["ФормаЭлемента"],
-    "макеты": ["ПечатнаяФорма"]
-  }
-}
-```
-
-### remove — удалить элементы
-
-```json
-{
-  "remove": {
-    "реквизиты": ["СтарыйРеквизит"],
-    "ТЧ": ["УстаревшаяТЧ"]
-  }
-}
-```
-
-### modify — изменить существующие
-
-```json
-{
-  "modify": {
-    "properties": {
-      "CodeLength": 11,
-      "Hierarchical": true,
-      "Owners": ["Catalog.Контрагенты", "Catalog.Организации"],
-      "RegisterRecords": ["AccumulationRegister.Продажи"],
-      "InputByString": ["StandardAttribute.Description"]
-    },
-    "реквизиты": {
-      "Комментарий": { "type": "Строка(500)" },
-      "СтароеИмя": { "name": "НовоеИмя" }
-    }
-  }
-}
-```
-
-### modify — реквизиты внутри ТЧ (JSON)
-
-```json
-{
-  "modify": {
-    "tabularSections": {
-      "Товары": {
-        "add": ["СтавкаНДС: EnumRef.СтавкиНДС", "Скидка: Число(15,2)"],
-        "remove": ["УстаревшийРекв"],
-        "modify": {
-          "СтароеИмя": { "name": "НовоеИмя", "type": "Строка(500)" }
-        }
-      }
-    }
-  }
-}
-```
-
-### Комбинирование
-
-Все три операции можно указать в одном JSON-файле. Для сложных сценариев (ТЧ с реквизитами + удаление + модификация) используйте JSON DSL.
-
-Пример: создать новую ТЧ и одновременно отредактировать реквизиты существующей ТЧ:
-```json
-{
-  "add": { "tabularSections": [{ "name": "НоваяТЧ", "attrs": ["Имя: Строка(100)"] }] },
-  "modify": {
-    "tabularSections": {
-      "СуществующаяТЧ": {
-        "add": ["НовыйРекв: Число(15,2)"],
-        "remove": ["СтарыйРекв"]
-      }
-    }
-  }
-}
-```
-
-### Синонимы ключей (case-insensitive)
-
-**Операции:** `add`/`добавить`, `remove`/`удалить`, `modify`/`изменить`
-
-**Типы дочерних элементов:**
-
-| Каноническое | Синонимы |
-|-------------|----------|
-| attributes | реквизиты, attrs |
-| tabularSections | табличныеЧасти, тч, ts |
-| dimensions | измерения, dims |
-| resources | ресурсы, res |
-| enumValues | значения, values |
-| columns | графы, колонки |
-| forms | формы |
-| templates | макеты |
-| commands | команды |
-| properties | свойства |
-
-### Синонимы типов
-
-`Строка(200)`, `Число(15,2)`, `Булево`, `Дата`, `ДатаВремя`, `ХранилищеЗначения`, `СправочникСсылка.XXX`, `ДокументСсылка.XXX`, `ПеречислениеСсылка.XXX`, `ОпределяемыйТип.XXX`.
-
-### Позиционная вставка
-
-JSON: `{ "name": "Склад", "type": "CatalogRef.Склады", "after": "Организация" }`
-
-Inline: `"Склад: CatalogRef.Склады >> after Организация"` или `"Склад: CatalogRef.Склады << before Комментарий"`
-
-### Shorthand-формат реквизитов
-
-```
-"ИмяРеквизита: Тип | req, index"
-```
-
-## Complex properties — Owners, RegisterRecords, BasedOn, InputByString
-
-Свойства со вложенной XML-структурой (не скалярный InnerText). Поддерживаются через inline-операции `add-*` / `remove-*` / `set-*` и через JSON `modify.properties`.
-
-| Свойство | Объекты | XML-тег | Inline-значение |
-|----------|---------|---------|-----------------|
-| Owners | Catalog, ChartOfCharacteristicTypes | `<xr:Item xsi:type="xr:MDObjectRef">` | `Catalog.XXX` |
-| RegisterRecords | Document | `<xr:Item xsi:type="xr:MDObjectRef">` | `AccumulationRegister.XXX` |
-| BasedOn | Document, Catalog, BP, Task | `<xr:Item xsi:type="xr:MDObjectRef">` | `Document.XXX` |
-| InputByString | Catalog, ChartOf*, Task | `<xr:Field>` | `StandardAttribute.Description` |
-
-## Поддерживаемые типы объектов
-
-| Тип объекта | Допустимые add-типы |
-|-------------|-------------------|
-| Catalog, Document, ExchangePlan, ChartOf*, BP, Task, Report, DP | attributes, tabularSections, forms, templates, commands |
-| Enum | enumValues, forms, templates, commands |
-| *Register (4 типа) | dimensions, resources, attributes, forms, templates, commands |
-| DocumentJournal | columns, forms, templates, commands |
-| Constant | forms |
-
-## Примеры
-
-### Inline: добавить реквизиты
-
-```powershell
--Operation add-attribute -Value "Комментарий: String(200) ;; Сумма: Число(15,2) | index"
-```
-
-### Inline: добавить ТЧ с реквизитами
-
-```powershell
+# Добавить ТЧ с реквизитами
 -Operation add-ts -Value "Товары: Ном: CatalogRef.Ном | req, Кол: Число(15,3), Цена: Число(15,2)"
-```
 
-### Inline: удалить + изменить (два вызова)
-
-```powershell
+# Удалить реквизит
 -Operation remove-attribute -Value "УстаревшийРеквизит"
--Operation modify-attribute -Value "СтароеИмя: name=НовоеИмя, type=String(500)"
-```
 
-### Inline: владельцы справочника
+# Переименовать + сменить тип
+-Operation modify-attribute -Value "СтароеИмя: name=НовоеИмя, type=Строка(500)"
 
-```powershell
+# Изменить свойства объекта
+-Operation modify-property -Value "CodeLength=11 ;; DescriptionLength=150"
+
+# Владельцы справочника
 -Operation set-owners -Value "Catalog.Контрагенты ;; Catalog.Организации"
-```
-
-### Inline: движения документа
-
-```powershell
--Operation add-registerRecord -Value "AccumulationRegister.Продажи ;; AccumulationRegister.ОстаткиТоваров"
-```
-
-### JSON: комплексное редактирование
-
-```json
-{
-  "add": {
-    "attributes": ["Комментарий: String(200)"],
-    "tabularSections": [{
-      "name": "Товары",
-      "attrs": ["Ном: CatalogRef.Ном | req", "Кол: Number(15,3)"]
-    }]
-  },
-  "remove": { "attributes": ["УстаревшийРеквизит"] },
-  "modify": {
-    "properties": {
-      "DescriptionLength": 150,
-      "Owners": ["Catalog.Контрагенты", "Catalog.Организации"]
-    },
-    "attributes": { "СтароеИмя": { "name": "НовоеИмя" } }
-  }
-}
 ```
 
 ## Верификация
@@ -375,17 +103,3 @@ Inline: `"Склад: CatalogRef.Склады >> after Организация"` 
 /meta-validate <ObjectPath>    — валидация после редактирования
 /meta-info <ObjectPath>        — визуальная сводка
 ```
-
-## Когда использовать
-
-- **Добавление реквизитов/ТЧ** к существующим объектам конфигурации
-- **Редактирование реквизитов внутри ТЧ** — добавление, удаление, переименование, смена типа
-- **Удаление устаревших** реквизитов, табличных частей
-- **Переименование** реквизитов, смена типа
-- **Изменение свойств** объекта (длина кода, иерархия и т.д.)
-- **Добавление значений** перечислений
-- **Добавление измерений/ресурсов** в регистры
-- **Управление владельцами** справочников (Owners)
-- **Управление движениями** документов (RegisterRecords)
-- **Настройка ввода по строке** (InputByString)
-- **Управление основаниями** (BasedOn)
