@@ -21,9 +21,15 @@ if (-not (Test-Path $JsonPath)) {
 $json = Get-Content -Raw -Encoding UTF8 $JsonPath
 $def = $json | ConvertFrom-Json
 
+# Normalize field synonyms: accept "objectType" as alias for "type"
+if (-not $def.type -and $def.objectType) {
+	$def | Add-Member -NotePropertyName "type" -NotePropertyValue $def.objectType
+}
+
 # Object type synonyms (Russian → English)
 $script:objectTypeSynonyms = @{
 	"Справочник"              = "Catalog"
+	"Каталог"                 = "Catalog"
 	"Документ"                = "Document"
 	"Перечисление"            = "Enum"
 	"Константа"               = "Constant"
@@ -571,7 +577,7 @@ function Emit-TabularStandardAttributes {
 
 function Emit-Attribute {
 	param([string]$indent, $parsed, [string]$context)
-	# $context: "catalog", "document", "tabular", "register"
+	# $context: "catalog", "document", "object", "processor", "tabular", "processor-tabular", "register"
 	$uuid = New-Guid-String
 	X "$indent<Attribute uuid=`"$uuid`">"
 	X "$indent`t<Properties>"
@@ -601,11 +607,15 @@ function Emit-Attribute {
 	X "$indent`t`t<MinValue xsi:nil=`"true`"/>"
 	X "$indent`t`t<MaxValue xsi:nil=`"true`"/>"
 
-	# FillFromFillingValue
-	X "$indent`t`t<FillFromFillingValue>false</FillFromFillingValue>"
+	# FillFromFillingValue — not for tabular/processor (non-stored objects don't have these)
+	if ($context -notin @("tabular", "processor")) {
+		X "$indent`t`t<FillFromFillingValue>false</FillFromFillingValue>"
+	}
 
-	# FillValue
-	Emit-FillValue "$indent`t`t" $typeStr
+	# FillValue — not for tabular/processor
+	if ($context -notin @("tabular", "processor")) {
+		Emit-FillValue "$indent`t`t" $typeStr
+	}
 
 	# FillChecking
 	$fillChecking = "DontCheck"
@@ -622,20 +632,22 @@ function Emit-Attribute {
 	X "$indent`t`t<LinkByType/>"
 	X "$indent`t`t<ChoiceHistoryOnInput>Auto</ChoiceHistoryOnInput>"
 
-	# Use — only for catalog/document top-level attributes
-	if ($context -eq "catalog" -or $context -eq "document") {
+	# Use — only for catalog top-level attributes
+	if ($context -eq "catalog") {
 		X "$indent`t`t<Use>ForItem</Use>"
 	}
 
-	# Indexing
-	$indexing = "DontIndex"
-	if ($parsed.flags -contains "index") { $indexing = "Index" }
-	if ($parsed.flags -contains "indexadditional") { $indexing = "IndexWithAdditionalOrder" }
-	if ($parsed.indexing) { $indexing = $parsed.indexing }
-	X "$indent`t`t<Indexing>$indexing</Indexing>"
+	# Indexing/FullTextSearch/DataHistory — not for non-stored objects (processor, processor-tabular)
+	if ($context -notin @("processor", "processor-tabular")) {
+		$indexing = "DontIndex"
+		if ($parsed.flags -contains "index") { $indexing = "Index" }
+		if ($parsed.flags -contains "indexadditional") { $indexing = "IndexWithAdditionalOrder" }
+		if ($parsed.indexing) { $indexing = $parsed.indexing }
+		X "$indent`t`t<Indexing>$indexing</Indexing>"
 
-	X "$indent`t`t<FullTextSearch>Use</FullTextSearch>"
-	X "$indent`t`t<DataHistory>Use</DataHistory>"
+		X "$indent`t`t<FullTextSearch>Use</FullTextSearch>"
+		X "$indent`t`t<DataHistory>Use</DataHistory>"
+	}
 
 	X "$indent`t</Properties>"
 	X "$indent</Attribute>"
@@ -672,16 +684,17 @@ function Emit-TabularSection {
 	X "$indent`t`t<ToolTip/>"
 	X "$indent`t`t<FillChecking>DontCheck</FillChecking>"
 	Emit-TabularStandardAttributes "$indent`t`t"
-	# Use=ForItem only for Catalog/Document
-	if ($objectType -in @("Catalog","Document")) {
+	# Use=ForItem only for Catalog tabular sections (Document does not have Use)
+	if ($objectType -eq "Catalog") {
 		X "$indent`t`t<Use>ForItem</Use>"
 	}
 	X "$indent`t</Properties>"
 
+	$tsContext = if ($objectType -in @("DataProcessor","Report")) { "processor-tabular" } else { "tabular" }
 	X "$indent`t<ChildObjects>"
 	foreach ($col in $columns) {
 		$parsed = Parse-AttributeShorthand $col
-		Emit-Attribute "$indent`t`t" $parsed "tabular"
+		Emit-Attribute "$indent`t`t" $parsed $tsContext
 	}
 	X "$indent`t</ChildObjects>"
 
@@ -2400,10 +2413,19 @@ if ($objType -in $typesWithAttrTS) {
 			$attrs += Parse-AttributeShorthand $a
 		}
 	}
-	$tsSections = @{}
+	$tsSections = [ordered]@{}
 	if ($def.tabularSections) {
-		$def.tabularSections.PSObject.Properties | ForEach-Object {
-			$tsSections[$_.Name] = @($_.Value)
+		# Normalize array format: [{name:"X", attributes:[...]}, ...] → {"X": [...]}
+		if ($def.tabularSections -is [array] -or $def.tabularSections.GetType().Name -eq "Object[]") {
+			foreach ($ts in $def.tabularSections) {
+				$tsName = $ts.name
+				$tsCols = if ($ts.attributes) { @($ts.attributes) } else { @() }
+				$tsSections[$tsName] = $tsCols
+			}
+		} else {
+			$def.tabularSections.PSObject.Properties | ForEach-Object {
+				$tsSections[$_.Name] = @($_.Value)
+			}
 		}
 	}
 
@@ -2428,6 +2450,7 @@ if ($objType -in $typesWithAttrTS) {
 		$context = switch ($objType) {
 			"Catalog"  { "catalog" }
 			"Document" { "document" }
+			{ $_ -in @("DataProcessor","Report") } { "processor" }
 			default    { "object" }
 		}
 		foreach ($a in $attrs) {
@@ -2764,7 +2787,13 @@ $valCount = 0
 $colCount = 0
 
 if ($def.attributes) { $attrCount = @($def.attributes).Count }
-if ($def.tabularSections) { $tsCount = @($def.tabularSections.PSObject.Properties).Count }
+if ($def.tabularSections) {
+	if ($def.tabularSections -is [array] -or $def.tabularSections.GetType().Name -eq "Object[]") {
+		$tsCount = @($def.tabularSections).Count
+	} else {
+		$tsCount = @($def.tabularSections.PSObject.Properties).Count
+	}
+}
 if ($def.dimensions) { $dimCount = @($def.dimensions).Count }
 if ($def.resources) { $resCount = @($def.resources).Count }
 if ($def.values) { $valCount = @($def.values).Count }
