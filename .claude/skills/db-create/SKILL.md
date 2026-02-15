@@ -68,13 +68,16 @@ allowed-tools:
 2. Предложи зарегистрировать базу в `.v8-project.json` (через `/db-list add`)
 3. Если указан шаблон `/UseTemplate` — предупреди что конфигурация будет загружена из шаблона
 
-## Пример
+## Примеры
 
 ```powershell
 $v8 = Get-ChildItem "C:\Program Files\1cv8\*\bin\1cv8.exe" | Sort-Object -Descending | Select-Object -First 1
 
 # Создать файловую базу
 & $v8.FullName CREATEINFOBASE File="C:\Bases\NewDB" /DisableStartupDialogs /Out "create.log"
+
+# Создать серверную базу
+& $v8.FullName CREATEINFOBASE Srvr="srv01";Ref="MyApp_Test" /DisableStartupDialogs /Out "create.log"
 
 # Создать из шаблона CF
 & $v8.FullName CREATEINFOBASE File="C:\Bases\NewDB" /UseTemplate "C:\Templates\config.cf" /DisableStartupDialogs /Out "create.log"

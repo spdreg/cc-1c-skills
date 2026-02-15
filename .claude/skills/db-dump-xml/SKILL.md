@@ -78,17 +78,22 @@ powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.p
 | 0 | Успешно |
 | 1 | Ошибка (см. лог) |
 
+> Если пользователь просит выгрузить конкретные объекты — используй `-Mode Partial` с `-Objects`.
+
 ## Примеры
 
 ```powershell
-# Полная выгрузка
-powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -V8Path "C:\Program Files\1cv8\8.3.25.1257\bin" -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -Password "" -ConfigDir "C:\WS\cfsrc" -Mode Full
+# Полная выгрузка (файловая база)
+powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -V8Path "C:\Program Files\1cv8\8.3.25.1257\bin" -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Mode Full
 
 # Инкрементальная выгрузка
-powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -V8Path "C:\Program Files\1cv8\8.3.25.1257\bin" -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Mode Changes
+powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Mode Changes
 
 # Частичная выгрузка
 powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Mode Partial -Objects "Справочник.Номенклатура,Документ.Заказ"
+
+# Серверная база
+powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyApp_Dev" -UserName "Admin" -Password "secret" -ConfigDir "C:\WS\cfsrc" -Mode Full
 
 # Выгрузка расширения
 powershell.exe -NoProfile -File .claude\skills\db-dump-xml\scripts\db-dump-xml.ps1 -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\ext_src" -Mode Full -Extension "МоёРасширение"

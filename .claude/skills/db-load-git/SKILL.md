@@ -70,7 +70,7 @@ powershell.exe -NoProfile -File .claude\skills\db-load-git\scripts\db-load-git.p
 |--------|----------|
 | `All` | Все незафиксированные: staged + unstaged + untracked |
 | `Staged` | Только проиндексированные (git add) |
-| `Unstaged` | Только изменённые но не проиндексированные |
+| `Unstaged` | Изменённые но не проиндексированные + новые (untracked) файлы |
 | `Commit` | Файлы из диапазона коммитов (требует `-CommitRange`) |
 
 ### Логика маппинга BSL → XML
@@ -96,11 +96,14 @@ powershell.exe -NoProfile -File .claude\skills\db-load-git\scripts\db-load-git.p
 ## Примеры
 
 ```powershell
-# Загрузить все незафиксированные изменения
+# Загрузить все незафиксированные изменения (файловая база)
 powershell.exe -NoProfile -File .claude\skills\db-load-git\scripts\db-load-git.ps1 -V8Path "C:\Program Files\1cv8\8.3.25.1257\bin" -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Source All
 
 # Только staged
 powershell.exe -NoProfile -File .claude\skills\db-load-git\scripts\db-load-git.ps1 -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Source Staged
+
+# Серверная база
+powershell.exe -NoProfile -File .claude\skills\db-load-git\scripts\db-load-git.ps1 -InfoBaseServer "srv01" -InfoBaseRef "MyApp_Dev" -UserName "Admin" -Password "secret" -ConfigDir "C:\WS\cfsrc" -Source All
 
 # Из диапазона коммитов
 powershell.exe -NoProfile -File .claude\skills\db-load-git\scripts\db-load-git.ps1 -InfoBasePath "C:\Bases\MyDB" -UserName "Admin" -ConfigDir "C:\WS\cfsrc" -Source Commit -CommitRange "HEAD~3..HEAD"

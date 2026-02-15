@@ -66,13 +66,17 @@ $v8 = Get-ChildItem "C:\Program Files\1cv8\*\bin\1cv8.exe" | Sort-Object -Descen
 1. Прочитай лог-файл и покажи результат
 2. **Предложи выполнить `/db-update`** — загрузка CF обновляет только «основную» конфигурацию конфигуратора, для применения к БД нужен `/UpdateDBCfg`
 
-## Пример
+## Примеры
 
 ```powershell
 $v8 = Get-ChildItem "C:\Program Files\1cv8\*\bin\1cv8.exe" | Sort-Object -Descending | Select-Object -First 1
 
-& $v8.FullName DESIGNER /F "C:\Bases\MyDB" /N"Admin" /P"" /LoadCfg "C:\backup\config.cf" /DisableStartupDialogs /Out "load.log"
+# Файловая база
+& $v8.FullName DESIGNER /F "C:\Bases\MyDB" /N"Admin" /LoadCfg "C:\backup\config.cf" /DisableStartupDialogs /Out "load.log"
+
+# Серверная база
+& $v8.FullName DESIGNER /S "srv01/MyApp_Test" /N"Admin" /P"secret" /LoadCfg "config.cf" /DisableStartupDialogs /Out "load.log"
 
 # Не забудь обновить БД после загрузки!
-& $v8.FullName DESIGNER /F "C:\Bases\MyDB" /N"Admin" /P"" /UpdateDBCfg /DisableStartupDialogs /Out "update.log"
+& $v8.FullName DESIGNER /F "C:\Bases\MyDB" /N"Admin" /UpdateDBCfg /DisableStartupDialogs /Out "update.log"
 ```
