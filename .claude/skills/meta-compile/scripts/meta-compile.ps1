@@ -21,9 +21,15 @@ if (-not (Test-Path $JsonPath)) {
 $json = Get-Content -Raw -Encoding UTF8 $JsonPath
 $def = $json | ConvertFrom-Json
 
+# Normalize field synonyms: accept "objectType" as alias for "type"
+if (-not $def.type -and $def.objectType) {
+	$def | Add-Member -NotePropertyName "type" -NotePropertyValue $def.objectType
+}
+
 # Object type synonyms (Russian → English)
 $script:objectTypeSynonyms = @{
 	"Справочник"              = "Catalog"
+	"Каталог"                 = "Catalog"
 	"Документ"                = "Document"
 	"Перечисление"            = "Enum"
 	"Константа"               = "Constant"
@@ -601,11 +607,15 @@ function Emit-Attribute {
 	X "$indent`t`t<MinValue xsi:nil=`"true`"/>"
 	X "$indent`t`t<MaxValue xsi:nil=`"true`"/>"
 
-	# FillFromFillingValue
-	X "$indent`t`t<FillFromFillingValue>false</FillFromFillingValue>"
+	# FillFromFillingValue — not for tabular section attributes
+	if ($context -ne "tabular") {
+		X "$indent`t`t<FillFromFillingValue>false</FillFromFillingValue>"
+	}
 
-	# FillValue
-	Emit-FillValue "$indent`t`t" $typeStr
+	# FillValue — not for tabular section attributes
+	if ($context -ne "tabular") {
+		Emit-FillValue "$indent`t`t" $typeStr
+	}
 
 	# FillChecking
 	$fillChecking = "DontCheck"
@@ -672,8 +682,8 @@ function Emit-TabularSection {
 	X "$indent`t`t<ToolTip/>"
 	X "$indent`t`t<FillChecking>DontCheck</FillChecking>"
 	Emit-TabularStandardAttributes "$indent`t`t"
-	# Use=ForItem only for Catalog/Document
-	if ($objectType -in @("Catalog","Document")) {
+	# Use=ForItem only for Catalog tabular sections (Document does not have Use)
+	if ($objectType -eq "Catalog") {
 		X "$indent`t`t<Use>ForItem</Use>"
 	}
 	X "$indent`t</Properties>"
@@ -2400,10 +2410,19 @@ if ($objType -in $typesWithAttrTS) {
 			$attrs += Parse-AttributeShorthand $a
 		}
 	}
-	$tsSections = @{}
+	$tsSections = [ordered]@{}
 	if ($def.tabularSections) {
-		$def.tabularSections.PSObject.Properties | ForEach-Object {
-			$tsSections[$_.Name] = @($_.Value)
+		# Normalize array format: [{name:"X", attributes:[...]}, ...] → {"X": [...]}
+		if ($def.tabularSections -is [array] -or $def.tabularSections.GetType().Name -eq "Object[]") {
+			foreach ($ts in $def.tabularSections) {
+				$tsName = $ts.name
+				$tsCols = if ($ts.attributes) { @($ts.attributes) } else { @() }
+				$tsSections[$tsName] = $tsCols
+			}
+		} else {
+			$def.tabularSections.PSObject.Properties | ForEach-Object {
+				$tsSections[$_.Name] = @($_.Value)
+			}
 		}
 	}
 
@@ -2764,7 +2783,13 @@ $valCount = 0
 $colCount = 0
 
 if ($def.attributes) { $attrCount = @($def.attributes).Count }
-if ($def.tabularSections) { $tsCount = @($def.tabularSections.PSObject.Properties).Count }
+if ($def.tabularSections) {
+	if ($def.tabularSections -is [array] -or $def.tabularSections.GetType().Name -eq "Object[]") {
+		$tsCount = @($def.tabularSections).Count
+	} else {
+		$tsCount = @($def.tabularSections.PSObject.Properties).Count
+	}
+}
 if ($def.dimensions) { $dimCount = @($def.dimensions).Count }
 if ($def.resources) { $resCount = @($def.resources).Count }
 if ($def.values) { $valCount = @($def.values).Count }

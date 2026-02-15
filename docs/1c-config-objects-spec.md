@@ -748,7 +748,8 @@ Ext/                               # Расширение конфигураци
     </Properties>
     <ChildObjects>
         <Attribute uuid="...">
-            <!-- Реквизиты-колонки таблицы, формат как у обычных реквизитов -->
+            <!-- Реквизиты-колонки таблицы: формат как у обычных реквизитов,
+                 но без FillFromFillingValue, FillValue, Use -->
         </Attribute>
     </ChildObjects>
 </TabularSection>
